@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Starlane Courier — a tiny 3D delivery rush</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #8fd8ff; }
+  body { font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; color: #fff; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+
+  /* HUD: small, in the corners, never over the road. */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+  #hud .left { position: absolute; top: 14px; left: 16px; }
+  #hud .right { position: absolute; top: 14px; right: 16px; text-align: right; }
+  #hud-score { font-size: 40px; font-weight: 800; line-height: 1; text-shadow: 0 2px 0 rgba(16,42,74,.45); }
+  #hud .label { font-size: 11px; font-weight: 700; letter-spacing: .18em; opacity: .85; }
+  #hud-stars-line { font-size: 20px; font-weight: 800; margin-top: 4px; text-shadow: 0 2px 0 rgba(16,42,74,.45); }
+  #hud-speed { font-size: 20px; font-weight: 800; text-shadow: 0 2px 0 rgba(16,42,74,.45); }
+  #hud-shield { font-size: 20px; margin-top: 4px; }
+  #hud-combo {
+    position: absolute; top: 124px; left: 16px; font-size: 22px; font-weight: 800;
+    color: #ffe066; text-shadow: 0 2px 0 rgba(16,42,74,.5);
+  }
+  #hud-combo.pop { animation: pop .25s ease-out; }
+  @keyframes pop { 0% { transform: scale(1.45); } 100% { transform: scale(1); } }
+
+  /* Screen panels sit low and small so the game itself stays the picture. */
+  .screen {
+    position: fixed; inset: 0; z-index: 4; display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-end; padding-bottom: 5vh; pointer-events: none;
+  }
+  .panel {
+    pointer-events: auto; text-align: center; background: rgba(13, 34, 64, .78);
+    border: 3px solid rgba(255, 255, 255, .25); border-radius: 20px;
+    padding: 20px 34px 24px; max-width: min(92vw, 560px); backdrop-filter: blur(3px);
+  }
+  .panel h1 { font-size: 44px; font-weight: 900; letter-spacing: .01em; line-height: 1.02; }
+  .panel h1 .accent { color: #ffd43b; }
+  .panel h2 { font-size: 34px; font-weight: 900; }
+  .panel p { margin-top: 8px; font-size: 15px; line-height: 1.45; opacity: .95; }
+  .panel .controls { font-size: 13px; opacity: .8; }
+  .panel .big-score { font-size: 52px; font-weight: 900; color: #ffd43b; line-height: 1.05; }
+  .panel .stats { font-size: 16px; font-weight: 700; margin-top: 4px; }
+  button.cta {
+    margin-top: 14px; font: inherit; font-size: 20px; font-weight: 800; color: #123;
+    background: #ffd43b; border: none; border-radius: 999px; padding: 12px 34px;
+    cursor: pointer; box-shadow: 0 4px 0 #d9a406; pointer-events: auto;
+  }
+  button.cta:active { transform: translateY(2px); box-shadow: 0 2px 0 #d9a406; }
+  #mute-button {
+    position: fixed; right: 14px; bottom: 14px; z-index: 5; font-size: 20px;
+    background: rgba(13, 34, 64, .6); color: #fff; border: 2px solid rgba(255,255,255,.3);
+    border-radius: 999px; width: 46px; height: 46px; cursor: pointer;
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="left">
+    <div class="label">SCORE</div>
+    <div id="hud-score">0</div>
+    <div id="hud-stars-line">⭐ <span id="hud-stars">0</span></div>
+  </div>
+  <div class="right">
+    <div id="hud-speed">0 km/h</div>
+    <div id="hud-shield" class="hidden">🛡️ SHIELD</div>
+  </div>
+  <div id="hud-combo" class="hidden">COMBO ×2</div>
+</div>
+
+<div id="title-screen" class="screen">
+  <div class="panel">
+    <h1>STARLANE<br><span class="accent">COURIER</span></h1>
+    <p>Rush the sky-lane, dodge the barriers, slide the beams and grab every
+       star parcel. One crash ends the run — a shield saves you once.</p>
+    <p class="controls">← → switch lane &nbsp;·&nbsp; ↑ / SPACE jump &nbsp;·&nbsp; ↓ slide &nbsp;·&nbsp; P pause &nbsp;·&nbsp; swipe on touch</p>
+    <button id="start-button" class="cta">▶ START DELIVERY</button>
+    <p class="controls">Best score: <span id="title-best">0</span></p>
+  </div>
+</div>
+
+<div id="over-screen" class="screen hidden">
+  <div class="panel">
+    <h2>DELIVERY OVER!</h2>
+    <div class="big-score" id="final-score">0</div>
+    <p class="stats">⭐ <span id="final-stars">0</span> parcels &nbsp;·&nbsp; 🏁 <span id="final-distance">0 m</span> &nbsp;·&nbsp; best combo <span id="final-combo">×1</span></p>
+    <p class="controls">Best score: <span id="final-best">0</span></p>
+    <button id="restart-button" class="cta">↻ RIDE AGAIN</button>
+  </div>
+</div>
+
+<div id="pause-screen" class="screen hidden">
+  <div class="panel">
+    <h2>PAUSED</h2>
+    <p>Press P to keep riding.</p>
+  </div>
+</div>
+
+<button id="mute-button" title="Mute (M)">🔊</button>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

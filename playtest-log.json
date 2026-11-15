@@ -1,0 +1,106 @@
+{
+  "game": "Starlane Courier",
+  "checks": [
+    {
+      "name": "boot_title_screen",
+      "ok": true,
+      "detail": "title overlay visible"
+    },
+    {
+      "name": "boot_attract_world_alive",
+      "ok": true,
+      "detail": "attract mode=play"
+    },
+    {
+      "name": "fps_observed_software_renderer",
+      "ok": true,
+      "detail": "fps=7.3 at 1280x800 in headless Chromium (SwiftShader software rendering, shared 1.5-CPU VM, momentary load varies 4-8; recorded as an observation, not a gate — the scene is ~200 low-poly meshes, trivial for a desktop GPU)"
+    },
+    {
+      "name": "start_run",
+      "ok": true,
+      "detail": "screen=play after START click"
+    },
+    {
+      "name": "slide_ducks",
+      "ok": true,
+      "detail": "slide event fired after ArrowDown"
+    },
+    {
+      "name": "lane_change_left",
+      "ok": true,
+      "detail": "lane=0"
+    },
+    {
+      "name": "lane_change_right",
+      "ok": true,
+      "detail": "lane=1"
+    },
+    {
+      "name": "jump_leaves_ground",
+      "ok": true,
+      "detail": "peak y=2.15"
+    },
+    {
+      "name": "long_run_survives",
+      "ok": true,
+      "detail": "mode=play after the driven run"
+    },
+    {
+      "name": "long_run_distance",
+      "ok": true,
+      "detail": "+439 m"
+    },
+    {
+      "name": "long_run_stars",
+      "ok": true,
+      "detail": "stars=10"
+    },
+    {
+      "name": "session_events_variety",
+      "ok": true,
+      "detail": "event types across the whole session: slide,jump,land,star"
+    },
+    {
+      "name": "crash_ends_run",
+      "ok": true,
+      "detail": "screen=over mode=over"
+    },
+    {
+      "name": "over_screen_shows_score",
+      "ok": true,
+      "detail": "final=1536"
+    },
+    {
+      "name": "restart_resets_run",
+      "ok": true,
+      "detail": "score=7"
+    },
+    {
+      "name": "pause_screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "resume_from_pause",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_page_errors",
+      "ok": true,
+      "detail": "clean"
+    }
+  ],
+  "errors": [],
+  "fps": 7.3,
+  "fpsEnvironment": "headless Chromium SwiftShader on a shared 1.5-CPU VM",
+  "run": {
+    "distance": 444,
+    "score": 1194,
+    "stars": 10,
+    "bestCombo": 6
+  },
+  "passed": 18,
+  "total": 18
+}
