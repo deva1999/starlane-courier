@@ -6,9 +6,9 @@
 
 import {
   COMBO_MAX, DESPAWN_BEHIND, GRAVITY, JUMP_VELOCITY, LANES, LANE_SPEED,
-  RIDER_DUCKED, RIDER_HALF, RIDER_HEIGHT, ROW_GAP_MIN, ROW_GAP_START,
-  SHIELD_GRACE, SLIDE_SECONDS, SPAWN_AHEAD, SPEED_MAX, SPEED_RAMP,
-  SPEED_START, STAR_POINTS,
+  OPENING_SAFE_REACH, RIDER_DUCKED, RIDER_HALF, RIDER_HEIGHT, ROW_GAP_MIN,
+  ROW_GAP_START, SHIELD_GRACE, SLIDE_SECONDS, SPAWN_AHEAD, SPEED_MAX,
+  SPEED_RAMP, SPEED_START, STAR_POINTS,
 } from './config.js';
 import { makeRandom, pick, randomInt } from './random.js';
 
@@ -49,8 +49,9 @@ export function createWorld(seed) {
     rider: { lane: 1, x: LANES[1], y: 0, vy: 0, grounded: true, sliding: 0 },
     rows: [],
     pickups: [],
-    nextRowZ: -55,
+    nextRowZ: -34,
     events: [],
+    fx: [],
     random: makeRandom(seed),
   };
   while (state.nextRowZ > -SPAWN_AHEAD) spawnRow(state);
@@ -65,30 +66,54 @@ export function riderHeight(state) {
 /** Queue one more row of trouble (and sometimes treasure) ahead. */
 function spawnRow(state) {
   const z = state.nextRowZ;
-  const gap = Math.max(ROW_GAP_MIN, ROW_GAP_START - state.distance * 0.012);
+  // Rows pack tighter as the run deepens: the gap sheds 1.6 units per
+  // hundred metres, faster than the old rate, down to a denser floor.
+  const gap = Math.max(ROW_GAP_MIN, ROW_GAP_START - state.distance * 0.016);
   state.nextRowZ -= gap * (0.85 + state.random() * 0.4);
   const roll = state.random();
   const lane = randomInt(state.random, 3);
 
-  if (roll < 0.16) {
+  // Opening grace: anything the rider would meet within the safe reach
+  // is a star line or nothing at all — never a hazard. Because a row
+  // reaches the rider after exactly -z units of travel, this holds no
+  // matter how the speed curve bends later.
+  if (-z < OPENING_SAFE_REACH) {
+    if (roll < 0.55) {
+      for (let i = 0; i < 5; i += 1) {
+        state.pickups.push({ kind: 'star', lane, z: z - i * 2.4, y: 0.75, taken: false });
+      }
+    }
+    return;
+  }
+
+  // Pressure: the deeper the run, the more of the mix is hazards and
+  // the less is calm star lines. The thresholds slide with distance,
+  // so the road a minute in is visibly meaner than the road at spawn.
+  const pressure = Math.min(1, state.distance / 850);
+  const starLine = 0.16 - 0.05 * pressure;
+  const beam = starLine + 0.08;
+  const gate = beam + 0.18 + 0.04 * pressure;
+  const doubleBarrier = gate + 0.20 + 0.03 * pressure;
+
+  if (roll < starLine) {
     // A line of stars down one lane: the calm between hazards.
     for (let i = 0; i < 5; i += 1) {
       state.pickups.push({ kind: 'star', lane, z: z - i * 2.4, y: 0.75, taken: false });
     }
     return;
   }
-  if (roll < 0.24) {
+  if (roll < beam) {
     // A beam across the whole lane: slide, do not jump.
     state.rows.push({ kind: KIND_BEAM, lane: -1, z, cleared: false });
     return;
   }
-  if (roll < 0.42) {
+  if (roll < gate) {
     // One gate pylon: simply do not be in its lane.
     state.rows.push({ kind: KIND_GATE, lane, z, cleared: false });
     maybeShield(state, z);
     return;
   }
-  if (roll < 0.62) {
+  if (roll < doubleBarrier) {
     // Barriers in two lanes, one lane left open.
     const open = randomInt(state.random, 3);
     for (let l = 0; l < 3; l += 1) {
@@ -154,7 +179,11 @@ function rowHits(state, row, riderX, riderY) {
 export function stepWorld(state, dt) {
   if (state.mode !== 'play') return;
   state.time += dt;
-  state.speed = Math.min(SPEED_MAX, state.speed + SPEED_RAMP * dt);
+  // The ramp itself ramps: the boost factor grows from ×1 toward ×2.8
+  // over the first ~34 seconds, so the pace curve bends upward and the
+  // top speed arrives in well under half the old time.
+  const rampBoost = 1 + Math.min(1.8, state.time / 34);
+  state.speed = Math.min(SPEED_MAX, state.speed + SPEED_RAMP * rampBoost * dt);
   state.distance += state.speed * dt;
   state.score += state.speed * dt;
   if (state.grace > 0) state.grace -= dt;
@@ -208,13 +237,18 @@ function collectPickups(state) {
     item.taken = true;
     if (item.kind === 'star') {
       state.stars += 1;
-      state.score += STAR_POINTS * state.combo;
+      const points = STAR_POINTS * state.combo;
+      state.score += points;
+      // The presentation layer gets the exact payout and lane, so the
+      // floating score text can show the real number where it happened.
+      state.fx.push({ kind: 'star', points, lane: item.lane });
       state.combo = Math.min(COMBO_MAX, state.combo + 1);
       state.bestCombo = Math.max(state.bestCombo, state.combo);
       state.comboTimer = COMBO_KEEP;
       state.events.push(EVENT_STAR);
     } else {
       state.shield = true;
+      state.fx.push({ kind: 'shield', lane: item.lane });
       state.events.push(EVENT_SHIELD);
     }
   }

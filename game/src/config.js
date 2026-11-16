@@ -9,14 +9,31 @@ export const LANES = [-3.2, 0, 3.2];
 export const RIDER_HALF = 0.55;
 
 /** Forward speed at the start of a run, in world units per second. */
-export const SPEED_START = 19;
+export const SPEED_START = 20;
 /** Forward speed the run ramps toward and never passes. */
-export const SPEED_MAX = 44;
-/** Speed gained per second survived. */
-export const SPEED_RAMP = 0.32;
+export const SPEED_MAX = 47;
+/**
+ * Base speed gained per second survived. The world multiplies this by
+ * a factor that itself grows with time survived, so the pace curve
+ * bends upward instead of crawling linearly toward the cap.
+ */
+export const SPEED_RAMP = 0.5;
+
+/**
+ * Opening grace: a row spawned closer than this reach (in world units
+ * the rider still has to travel before meeting it) is never lethal —
+ * the first seconds of a run carry star lines only, so a new player
+ * learns the lane before the lane starts fighting back.
+ */
+export const OPENING_SAFE_REACH = 88;
+
+/** Speed at which the on-screen speed streaks begin to show. */
+export const STREAK_SPEED = 31;
+/** Distance between the periodic distance markers, in metres. */
+export const MARKER_EVERY = 250;
 
 /** Sideways speed of a lane change, units per second. */
-export const LANE_SPEED = 16;
+export const LANE_SPEED = 19;
 /** Jump take-off velocity and gravity, units per second (squared). */
 export const JUMP_VELOCITY = 11.5;
 export const GRAVITY = 30;
@@ -25,9 +42,9 @@ export const SLIDE_SECONDS = 0.72;
 export const RIDER_HEIGHT = 1.15;
 export const RIDER_DUCKED = 0.55;
 
-/** Distance between spawn rows early on, shrinking as speed grows. */
-export const ROW_GAP_START = 26;
-export const ROW_GAP_MIN = 15;
+/** Distance between spawn rows early on, shrinking as distance grows. */
+export const ROW_GAP_START = 24;
+export const ROW_GAP_MIN = 14.5;
 
 /** Scoring: one point per metre, stars pay out through the combo. */
 export const STAR_POINTS = 25;

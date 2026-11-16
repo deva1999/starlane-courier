@@ -61,4 +61,14 @@ const outBytes = outFiles.reduce((sum, file) => sum + statSync(file).size, 0);
 if (outFiles.length > MAX_ENTRIES || outBytes > MAX_TOTAL_BYTES) {
   throw new Error(`output exceeds platform limits: ${outFiles.length} entries, ${outBytes} bytes`);
 }
+// A closing summary a human can skim: what was handed in, how much of
+// each platform allowance it uses, and where it landed. Log only —
+// the dossier bytes above are untouched by anything printed here.
+const gameFiles = outFiles.filter((file) => file.includes(`${join(outputDir, 'game')}`)).length;
+const shotFiles = outFiles.filter((file) => file.includes(`${join(outputDir, 'screenshots')}`)).length;
+const kib = (bytes) => `${(bytes / 1024).toFixed(1)} KiB`;
 console.log(`starlane-courier: ${outFiles.length} files, ${outBytes} bytes -> ${outputDir}`);
+console.log(
+  `  hand-in: game/ ${gameFiles} files · screenshots/ ${shotFiles} files · dossier.json ${kib(statSync(join(outputDir, 'dossier.json')).size)}`
+  + ` · total ${kib(outBytes)} of ${MAX_TOTAL_BYTES / (1024 * 1024)} MiB (${outFiles.length}/${MAX_ENTRIES} entries)`,
+);

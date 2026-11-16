@@ -5,12 +5,16 @@
 // travelled, which keeps even the decoration reproducible.
 
 import * as THREE from 'three';
-import { COLORS, LANES } from './config.js';
+import { COLORS, LANES, SPEED_MAX, SPEED_START } from './config.js';
 import { KIND_BARRIER, KIND_BEAM, KIND_GATE } from './world.js';
 import { makeRandom } from './random.js';
 
 const SCENERY_SPAN = 190;
-const SCENERY_COUNT = 46;
+const SCENERY_COUNT = 88;
+/** Camera anchor: low and close, so the rider fills the lower frame. */
+const CAMERA_Y = 2.95;
+const CAMERA_Z = 6.3;
+const CAMERA_FOV = 66;
 
 function flat(color, extra = {}) {
   // Lambert, not Standard: the same flat-shaded low-poly look at a
@@ -29,6 +33,42 @@ function makeTree(leafColor) {
   leaves.scale.y = 1.25;
   tree.add(trunk, leaves);
   return tree;
+}
+
+/** A rounded bush: one squashed blob, no trunk. */
+function makeBush(color) {
+  const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(0.72, 0), flat(color));
+  bush.scale.y = 0.78;
+  return bush;
+}
+
+/** A glowing crystal shard, the valley's one bit of jewellery. */
+function makeCrystal(color) {
+  const crystal = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.55),
+    flat(color, { emissive: color, emissiveIntensity: 0.55 }),
+  );
+  crystal.scale.y = 1.7;
+  return crystal;
+}
+
+/**
+ * A floating grass islet at road level, carrying one small planting.
+ * These hug the lane's edge, so the roadside reads busy and close
+ * instead of empty valley stretching to the horizon.
+ */
+function makeIslet(planting) {
+  const islet = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.55, 3.1), flat(COLORS.grass));
+  base.position.y = -0.28;
+  const underside = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.5, 4), flat(0x8a6b4a));
+  underside.rotation.x = Math.PI;
+  underside.rotation.y = Math.PI / 4;
+  underside.position.y = -1.25;
+  islet.add(base, underside);
+  planting.position.y = planting.userData.groundY ?? 0.02;
+  islet.add(planting);
+  return islet;
 }
 
 /** A puffy cloud of three flattened spheres, unlit so it stays white. */
@@ -157,15 +197,15 @@ export function createScene(canvas) {
   scene.background = new THREE.Color(COLORS.sky);
   scene.fog = new THREE.Fog(COLORS.fog, 42, 148);
 
-  const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 400);
-  camera.position.set(0, 4.6, 8.8);
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 400);
+  camera.position.set(0, CAMERA_Y, CAMERA_Z);
 
   scene.add(new THREE.HemisphereLight(0xcfefff, 0x3f7a34, 1.05));
   const sun = new THREE.DirectionalLight(0xfff1cf, 1.9);
   sun.position.set(7, 14, 5);
   scene.add(sun);
   const sunBall = new THREE.Mesh(new THREE.IcosahedronGeometry(3.2, 1), new THREE.MeshBasicMaterial({ color: 0xffe28a, fog: false }));
-  sunBall.position.set(38, 30, -110);
+  sunBall.position.set(30, 21, -105);
   scene.add(sunBall);
 
   // The floating road: a long deck, glowing rails, and scrolling dashes.
@@ -192,6 +232,26 @@ export function createScene(canvas) {
     }
   }
 
+  // Trackside light posts in pairs, spaced to fill the same wrap span
+  // as the scenery: a steady rhythm of lamps at the road's edge sells
+  // the speed and frames the lane the rider has to read.
+  const posts = [];
+  const postPoleMaterial = flat(0x343a40);
+  const postLampMaterial = flat(COLORS.roadEdge, { emissive: COLORS.roadEdge, emissiveIntensity: 0.9 });
+  for (let i = 0; i < 10; i += 1) {
+    for (const side of [-1, 1]) {
+      const post = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.25, 0.14), postPoleMaterial);
+      pole.position.y = 0.62;
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 8), postLampMaterial);
+      lamp.position.y = 1.32;
+      post.add(pole, lamp);
+      post.position.x = 6.25 * side;
+      scene.add(post);
+      posts.push({ mesh: post, baseZ: -i * (SCENERY_SPAN / 10) });
+    }
+  }
+
   // Valley floor far below, and scenery whose place is a function of
   // distance: item i sits at wrap(baseZ - distance), so any frame can be
   // rebuilt exactly from the run's numbers alone.
@@ -202,30 +262,57 @@ export function createScene(canvas) {
   const sceneryRandom = makeRandom(20261);
   const scenery = [];
   for (let i = 0; i < SCENERY_COUNT; i += 1) {
-    const kind = sceneryRandom();
-    let item;
-    if (kind < 0.45) item = makeTree(sceneryRandom() < 0.75 ? COLORS.leafA : COLORS.leafB);
-    else if (kind < 0.72) {
-      item = new THREE.Mesh(new THREE.ConeGeometry(3.2 + sceneryRandom() * 2.4, 5 + sceneryRandom() * 4, 7), flat(COLORS.hill));
-      item.position.y = -7 + 1.8;
-    } else item = makeCloud();
+    const band = sceneryRandom();
     const side = sceneryRandom() < 0.5 ? -1 : 1;
-    const isCloud = kind >= 0.72;
-    item.userData = {
-      baseZ: -sceneryRandom() * SCENERY_SPAN,
-      x: isCloud ? (sceneryRandom() - 0.5) * 90 : side * (10.5 + sceneryRandom() * 26),
-      y: isCloud ? 11 + sceneryRandom() * 9 : (kind < 0.45 ? -7 : undefined),
-      spin: (sceneryRandom() - 0.5) * 0.15,
-    };
-    if (item.userData.y !== undefined) item.position.y = item.userData.y;
+    let item;
+    let x;
+    let y;
+    let spin = (sceneryRandom() - 0.5) * 0.15;
+    if (band < 0.44) {
+      // Near band: floating islets at road level, just outside the
+      // rails — close enough to feel the speed, never over the lane.
+      const pick = sceneryRandom();
+      let planting;
+      if (pick < 0.45) {
+        planting = makeTree(sceneryRandom() < 0.75 ? COLORS.leafA : COLORS.leafB);
+        planting.scale.setScalar(0.72);
+      } else if (pick < 0.78) {
+        planting = makeBush(sceneryRandom() < 0.7 ? COLORS.leafA : COLORS.leafB);
+        planting.userData.groundY = 0.5;
+      } else {
+        planting = makeCrystal(sceneryRandom() < 0.5 ? COLORS.shield : 0xff8fab);
+        planting.userData.groundY = 0.3;
+      }
+      item = makeIslet(planting);
+      x = side * (7.7 + sceneryRandom() * 3.4);
+      y = -0.55 - sceneryRandom() * 0.5;
+      spin = 0;
+    } else if (band < 0.8) {
+      // Mid band down on the valley floor: trees and hills as before,
+      // but starting nearer the road so the middle ground is populated.
+      const kind = sceneryRandom();
+      if (kind < 0.55) item = makeTree(sceneryRandom() < 0.75 ? COLORS.leafA : COLORS.leafB);
+      else {
+        item = new THREE.Mesh(new THREE.ConeGeometry(3.2 + sceneryRandom() * 2.4, 5 + sceneryRandom() * 4, 7), flat(COLORS.hill));
+      }
+      x = side * (11.5 + sceneryRandom() * 26);
+      y = kind < 0.55 ? -7 : -7 + 1.8;
+    } else {
+      item = makeCloud();
+      x = (sceneryRandom() - 0.5) * 90;
+      y = 10 + sceneryRandom() * 8;
+    }
+    item.userData = { baseZ: -sceneryRandom() * SCENERY_SPAN, x, y, spin };
+    item.position.y = y;
     item.rotation.y = sceneryRandom() * Math.PI * 2;
     const scale = 0.85 + sceneryRandom() * 0.9;
-    item.scale.setScalar(isCloud ? 1.3 : scale);
+    item.scale.setScalar(band >= 0.8 ? 1.3 : scale);
     scene.add(item);
     scenery.push(item);
   }
 
   const rider = makeRider();
+  rider.scale.set(1.14, 1, 1.14);
   scene.add(rider);
   const riderShadow = rider.getObjectByName('shadow');
   const thrusters = [];
@@ -322,7 +409,10 @@ export function createScene(canvas) {
       mesh.position.set(row.kind === KIND_BEAM ? 0 : LANES[row.lane], 0, row.z);
     }
     for (const item of state.pickups) {
-      if (item.taken) continue;
+      // Past the rider's plane a pickup is already missed; drawing it
+      // puts a huge blurred blob at the frame's edge for a frame or
+      // two, so the visible road only ever shows what can still be won.
+      if (item.taken || item.z > 1.5) continue;
       const pool = pools[item.kind];
       const index = used[item.kind];
       used[item.kind] += 1;
@@ -336,11 +426,14 @@ export function createScene(canvas) {
       for (let i = used[kind]; i < pools[kind].length; i += 1) pools[kind][i].visible = false;
     }
 
-    // Dashes and scenery scroll with distance travelled.
+    // Dashes, light posts and scenery scroll with distance travelled.
     for (let i = 0; i < dashes.length; i += 1) {
       const dash = dashes[i];
       const base = -((i >> 1) * 7.4);
       dash.position.z = wrapZ(base - state.distance) + 12;
+    }
+    for (const post of posts) {
+      post.mesh.position.z = wrapZ(post.baseZ - state.distance) + 12;
     }
     for (const item of scenery) {
       item.position.z = wrapZ(item.userData.baseZ - state.distance) + 12;
@@ -362,19 +455,21 @@ export function createScene(canvas) {
     }
     particleGeometry.attributes.position.needsUpdate = true;
 
-    // Camera rides behind and a little above, leaning into lane changes;
-    // speed widens the view a touch, and impacts shake what is left.
-    const speedShare = (state.speed - 19) / 25;
-    camera.fov = 68 + THREE.MathUtils.clamp(speedShare, 0, 1) * 8;
+    // Camera rides low and close behind the rider, leaning into lane
+    // changes; speed widens the view a touch, and impacts shake what
+    // is left. The low anchor keeps the horizon in the top sliver of
+    // the frame and the rider big in the lower middle.
+    const speedShare = (state.speed - SPEED_START) / (SPEED_MAX - SPEED_START);
+    camera.fov = CAMERA_FOV + THREE.MathUtils.clamp(speedShare, 0, 1) * 10;
     camera.updateProjectionMatrix();
     shake = Math.max(0, shake - dt * 2.2);
     const jolt = shake * shake;
     camera.position.set(
       r.x * 0.55 + (Math.random() - 0.5) * jolt * 0.5,
-      4.6 + r.y * 0.22 + (Math.random() - 0.5) * jolt * 0.4,
-      8.8,
+      CAMERA_Y + r.y * 0.26 + (Math.random() - 0.5) * jolt * 0.4,
+      CAMERA_Z,
     );
-    camera.lookAt(r.x * 0.72, 1.05 + r.y * 0.3, -9);
+    camera.lookAt(r.x * 0.74, 1.12 + r.y * 0.3, -8.5);
     renderer.render(scene, camera);
   }
 

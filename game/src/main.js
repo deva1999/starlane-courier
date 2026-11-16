@@ -4,7 +4,7 @@
 // The rules live in world.js, the pictures in render.js; this file is
 // only the conductor.
 
-import { LANES, STEP } from './config.js';
+import { LANES, MARKER_EVERY, SPEED_MAX, STEP, STREAK_SPEED } from './config.js';
 import { createAudio } from './audio.js';
 import { createInput } from './input.js';
 import { createScene } from './render.js';
@@ -37,6 +37,85 @@ const screens = {
   over: document.getElementById('over-screen'),
   pause: document.getElementById('pause-screen'),
 };
+
+// Event feedback: edge flashes, floating score text, speed streaks and
+// distance markers. Everything here is presentation only — it reads
+// the world's events and fx queue, changes no rules, and is exposed on
+// window.__FX__ so the playtest can prove each effect really fired.
+const fxEls = {
+  flash: document.getElementById('edge-flash'),
+  floaters: document.getElementById('fx-floaters'),
+  streaks: document.getElementById('speed-streaks'),
+  marker: document.getElementById('distance-marker'),
+  distance: document.getElementById('hud-distance'),
+};
+const fxState = {
+  flashCount: 0,
+  flashByKind: {},
+  lastFlashKind: '',
+  floaterCount: 0,
+  lastFloaterText: '',
+  markerCount: 0,
+  lastMarker: 0,
+  streakLevel: 0,
+};
+let flashTimer = null;
+let markerTimer = null;
+let markerShownFor = 0;
+
+/** Flash the frame's edge once: colour and strength depend on the event. */
+function fireFlash(kind, rgb, strength) {
+  fxState.flashCount += 1;
+  fxState.flashByKind[kind] = (fxState.flashByKind[kind] ?? 0) + 1;
+  fxState.lastFlashKind = kind;
+  fxEls.flash.dataset.kind = kind;
+  if (flashTimer) clearTimeout(flashTimer);
+  fxEls.flash.style.transition = 'none';
+  fxEls.flash.style.boxShadow = `inset 0 0 90px 26px rgba(${rgb}, ${strength})`;
+  fxEls.flash.style.opacity = '1';
+  void fxEls.flash.offsetWidth;
+  fxEls.flash.style.transition = 'opacity .55s ease-out';
+  fxEls.flash.style.opacity = '0';
+  flashTimer = setTimeout(() => { fxEls.flash.dataset.kind = ''; }, 700);
+}
+
+/** A short-lived score text rising beside the rider, then gone. */
+function spawnFloater(text, laneX, shield = false) {
+  fxState.floaterCount += 1;
+  fxState.lastFloaterText = text;
+  const el = document.createElement('div');
+  el.className = shield ? 'floater shield' : 'floater';
+  el.textContent = text;
+  // The camera follows the rider at 0.55 of its offset, so the rider
+  // sits near the horizontal centre, shifted by just over half its x.
+  el.style.left = `${50 + laneX * 3.1}%`;
+  el.style.top = '56%';
+  fxEls.floaters.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+/** Turn the world's detailed fx queue into floaters (play screen only). */
+function presentFx() {
+  for (const entry of world.fx) {
+    if (screen !== 'play') continue;
+    if (entry.kind === 'star') spawnFloater(`+${entry.points}`, LANES[entry.lane]);
+    else if (entry.kind === 'shield') spawnFloater('SHIELD UP', LANES[entry.lane], true);
+  }
+  world.fx.length = 0;
+}
+
+/** Silence every transient effect (pause, title, game over). */
+function clearFx(keepFlash = false) {
+  fxEls.floaters.innerHTML = '';
+  fxEls.streaks.style.opacity = '0';
+  fxState.streakLevel = 0;
+  fxEls.marker.classList.remove('show');
+  if (!keepFlash) {
+    if (flashTimer) clearTimeout(flashTimer);
+    fxEls.flash.style.opacity = '0';
+    fxEls.flash.dataset.kind = '';
+  }
+}
 const BEST_KEY = 'starlane-courier-best';
 
 let screen = 'title';
@@ -58,6 +137,10 @@ function showScreen(name) {
   screens.over.classList.toggle('hidden', name !== 'over');
   screens.pause.classList.toggle('hidden', name !== 'pause');
   hud.root.classList.toggle('hidden', name === 'title');
+  // Transient feedback belongs to live play: floaters, streaks and
+  // markers die with the screen change. A crash flash is the one
+  // exception — it is the crash, already fading as results appear.
+  if (name !== 'play') clearFx(name === 'over');
 }
 
 /** Start a fresh run from the title or the game-over screen. */
@@ -66,6 +149,8 @@ function beginRun() {
   world = createWorld((Date.now() & 0xffff) + 1);
   pilot = createAutopilot();
   lastComboShown = 1;
+  markerShownFor = 0;
+  clearFx();
   audio.startMusic();
   showScreen('play');
 }
@@ -101,19 +186,23 @@ function presentEvents() {
     } else if (event === EVENT_NEAR) {
       audio.near();
       view.burst(r.x + (r.x < 0 ? 1.4 : -1.4), 0.8, -0.5, 5, 0xf1f3f5);
+      if (screen === 'play') fireFlash('near', '255, 255, 255', 0.5);
     } else if (event === EVENT_JUMP) audio.jump();
     else if (event === EVENT_SLIDE) audio.slide();
     else if (event === EVENT_SHIELD_BREAK) {
       audio.shieldBreak();
       view.addShake(0.7);
       view.burst(r.x, r.y + 0.8, -0.5, 22, 0x3bc9db);
+      if (screen === 'play') fireFlash('shieldbreak', '59, 201, 219', 0.85);
     } else if (event === EVENT_CRASH) {
       audio.crash();
       view.addShake(1);
       view.burst(r.x, r.y + 0.8, -0.5, 30, 0xff5d5d);
+      if (screen === 'play') fireFlash('crash', '255, 70, 70', 0.95);
     }
   }
   world.events.length = 0;
+  presentFx();
 }
 
 /** Refresh the HUD numbers from the world state. */
@@ -121,6 +210,7 @@ function presentHud() {
   hud.score.textContent = String(Math.floor(world.score));
   hud.stars.textContent = String(world.stars);
   hud.speed.textContent = `${Math.round(world.speed * 3.6)} km/h`;
+  fxEls.distance.textContent = `${Math.floor(world.distance)} m`;
   hud.shield.classList.toggle('hidden', !world.shield);
   if (world.combo !== lastComboShown) {
     lastComboShown = world.combo;
@@ -130,6 +220,25 @@ function presentHud() {
     hud.combo.classList.add('pop');
   }
   hud.combo.classList.toggle('hidden', world.combo <= 1);
+
+  // Speed streaks fade in with pace and exist only in live play.
+  const level = screen === 'play'
+    ? Math.min(1, Math.max(0, (world.speed - STREAK_SPEED) / (SPEED_MAX - STREAK_SPEED)))
+    : 0;
+  fxState.streakLevel = level;
+  fxEls.streaks.style.opacity = String(Math.round(level * 0.9 * 100) / 100);
+
+  // A distance marker pill each MARKER_EVERY metres, gone in ~1.5 s.
+  const marker = Math.floor(world.distance / MARKER_EVERY) * MARKER_EVERY;
+  if (screen === 'play' && marker > 0 && marker > markerShownFor) {
+    markerShownFor = marker;
+    fxState.markerCount += 1;
+    fxState.lastMarker = marker;
+    fxEls.marker.textContent = `${marker} m`;
+    fxEls.marker.classList.add('show');
+    if (markerTimer) clearTimeout(markerTimer);
+    markerTimer = setTimeout(() => fxEls.marker.classList.remove('show'), 1500);
+  }
 }
 
 /** Apply one queued input action to whatever screen is showing. */
@@ -223,6 +332,9 @@ if (shotName) {
     document.getElementById('final-best').textContent = String(Math.max(best, score));
   }
   showScreen(shot.screen);
+  // A screenshot is a settled frame, not a moment in a run: distance
+  // already covered must not pop a marker pill into the picture.
+  markerShownFor = Math.floor(world.distance / MARKER_EVERY) * MARKER_EVERY;
   presentHud();
   for (let i = 0; i < 4; i += 1) view.draw(world, 1 / 60);
   window.__SHOT_READY__ = true;
@@ -238,6 +350,7 @@ window.__GAME__ = {
 };
 Object.defineProperty(window, '__GAME_STATE__', { get: () => world });
 window.__EVENTS__ = eventLog;
+window.__FX__ = fxState;
 window.render_game_to_text = () => JSON.stringify({
   coords: 'x right, y up, z toward the camera; the rider rides at z=0 and rows approach from -z',
   screen,
@@ -245,9 +358,24 @@ window.render_game_to_text = () => JSON.stringify({
   score: Math.floor(world.score),
   stars: world.stars,
   combo: world.combo,
+  bestCombo: world.bestCombo,
   shield: world.shield,
   speed: Math.round(world.speed * 10) / 10,
   distance: Math.floor(world.distance),
+  fx: {
+    flashCount: fxState.flashCount,
+    flashByKind: fxState.flashByKind,
+    lastFlashKind: fxState.lastFlashKind,
+    floaterCount: fxState.floaterCount,
+    lastFloaterText: fxState.lastFloaterText,
+    markerCount: fxState.markerCount,
+    lastMarker: fxState.lastMarker,
+    streakLevel: Math.round(fxState.streakLevel * 100) / 100,
+    flashKind: fxEls.flash.dataset.kind ?? '',
+    floaterDom: fxEls.floaters.childElementCount,
+    markerShown: fxEls.marker.classList.contains('show'),
+    markerText: fxEls.marker.textContent,
+  },
   rider: {
     lane: world.rider.lane,
     x: Math.round(world.rider.x * 100) / 100,

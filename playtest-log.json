@@ -14,7 +14,7 @@
     {
       "name": "fps_observed_software_renderer",
       "ok": true,
-      "detail": "fps=7.3 at 1280x800 in headless Chromium (SwiftShader software rendering, shared 1.5-CPU VM, momentary load varies 4-8; recorded as an observation, not a gate — the scene is ~200 low-poly meshes, trivial for a desktop GPU)"
+      "detail": "fps=6.3 at 1280x800 in headless Chromium (SwiftShader software rendering, shared 1.5-CPU VM; recorded as an observation, not a gate — the scene is low-poly meshes with Lambert materials, trivial for a desktop GPU)"
     },
     {
       "name": "start_run",
@@ -42,6 +42,21 @@
       "detail": "peak y=2.15"
     },
     {
+      "name": "opening_safe_phase",
+      "ok": true,
+      "detail": "hands-off world still mode=play at 80 m (t=5.3s)"
+    },
+    {
+      "name": "difficulty_speed_ramp",
+      "ok": true,
+      "detail": "speed 22.7 -> 37.1 units/s between 5s and 25s (mode=play)"
+    },
+    {
+      "name": "difficulty_density_rises",
+      "ok": true,
+      "detail": "distinct rows spawned: 3 in 2-7s window vs 13 in 24-29s window"
+    },
+    {
       "name": "long_run_survives",
       "ok": true,
       "detail": "mode=play after the driven run"
@@ -49,17 +64,47 @@
     {
       "name": "long_run_distance",
       "ok": true,
-      "detail": "+439 m"
+      "detail": "+864 m"
     },
     {
       "name": "long_run_stars",
       "ok": true,
-      "detail": "stars=10"
+      "detail": "stars=13"
     },
     {
-      "name": "session_events_variety",
+      "name": "feedback_star_floater",
       "ok": true,
-      "detail": "event types across the whole session: slide,jump,land,star"
+      "detail": "floaters spawned=13, star payout text seen in DOM=\"+175\""
+    },
+    {
+      "name": "feedback_speed_streaks",
+      "ok": true,
+      "detail": "peak streak level=0.63 at speed=41.2"
+    },
+    {
+      "name": "feedback_distance_marker",
+      "ok": true,
+      "detail": "last marker=750 m, pill seen showing \"750 m\""
+    },
+    {
+      "name": "feedback_cleared_on_pause",
+      "ok": true,
+      "detail": "streak opacity=0, floaters in DOM=0, marker shown=false"
+    },
+    {
+      "name": "resume_from_pause",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "feedback_near_miss_flash",
+      "ok": true,
+      "detail": "near flashes=1, edge-flash kind=\"near\" at the event"
+    },
+    {
+      "name": "feedback_shield_break_flash",
+      "ok": true,
+      "detail": "break flashes=1, edge-flash kind=\"shieldbreak\", run continues mode=play"
     },
     {
       "name": "crash_ends_run",
@@ -67,14 +112,24 @@
       "detail": "screen=over mode=over"
     },
     {
+      "name": "feedback_crash_flash",
+      "ok": true,
+      "detail": "crash flashes this phase=1"
+    },
+    {
       "name": "over_screen_shows_score",
       "ok": true,
-      "detail": "final=1536"
+      "detail": "final=128"
+    },
+    {
+      "name": "feedback_cleared_on_game_over",
+      "ok": true,
+      "detail": "streak opacity=0, floaters in DOM=0"
     },
     {
       "name": "restart_resets_run",
       "ok": true,
-      "detail": "score=7"
+      "detail": "score=8"
     },
     {
       "name": "pause_screen",
@@ -82,7 +137,7 @@
       "detail": ""
     },
     {
-      "name": "resume_from_pause",
+      "name": "resume_from_pause_final",
       "ok": true,
       "detail": ""
     },
@@ -93,14 +148,14 @@
     }
   ],
   "errors": [],
-  "fps": 7.3,
+  "fps": 6.3,
   "fpsEnvironment": "headless Chromium SwiftShader on a shared 1.5-CPU VM",
   "run": {
-    "distance": 444,
-    "score": 1194,
-    "stars": 10,
-    "bestCombo": 6
+    "distance": 870,
+    "score": 2115,
+    "stars": 13,
+    "bestCombo": 8
   },
-  "passed": 18,
-  "total": 18
+  "passed": 29,
+  "total": 29
 }

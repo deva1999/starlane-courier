@@ -4,17 +4,24 @@
 // really looks like and the same seed always gives the same frame. The
 // maker's screenshots (shots.json) are rendered from these scenes.
 
-import { LANES, STEP } from './config.js';
+import { LANES, LANE_SPEED, STEP } from './config.js';
 import {
   KIND_BARRIER, KIND_BEAM, KIND_GATE, createWorld, jump, slide, steer, stepWorld,
 } from './world.js';
 
 export const SHOT_TITLE = 'title';
 export const SHOT_PLAY = 'play';
+export const SHOT_RUSH = 'rush';
 export const SHOT_OVER = 'over';
 
 /** Seconds of play the 'play' scene lives through before its frame. */
-const PLAY_SECONDS = 17;
+const PLAY_SECONDS = 13;
+/**
+ * The 'rush' scene rides much longer, until the speed curve has bent
+ * most of the way to its cap: wide view, streaks lit, road at its
+ * densest — a frame that cannot be mistaken for the 'play' scene.
+ */
+const RUSH_SECONDS = 34;
 /** The 'over' scene's pilot plays honestly this far, then stops dodging. */
 const DOOMED_AFTER_METRES = 300;
 /** Hard cap so a lucky doomed pilot still ends inside a minute. */
@@ -39,6 +46,15 @@ function openLanes(group) {
   const blocked = new Set();
   for (const row of group) if (row.kind !== KIND_BEAM) blocked.add(row.lane);
   return [0, 1, 2].filter((lane) => !blocked.has(lane));
+}
+
+/** The lane whose centre the rider's body is currently closest to. */
+function nearestLane(x) {
+  let best = 0;
+  for (let lane = 1; lane < 3; lane += 1) {
+    if (Math.abs(LANES[lane] - x) < Math.abs(LANES[best] - x)) best = lane;
+  }
+  return best;
 }
 
 /**
@@ -83,11 +99,23 @@ export function createAutopilot(doomedAfter = Infinity) {
     }
     if (star && star.lane !== rider.lane) {
       // Chase only into a lane both groups leave open: a lane the
-      // second group blocks is a trap with a star in it.
+      // second group blocks is a trap with a star in it. And a chase
+      // whose path crosses a lane the first group blocks needs real
+      // room to spare, however open the star's own lane is — a late
+      // crossing is how a rider ends up straddling a blocked lane
+      // exactly as its row arrives.
       const chaseLaneOpen = openLanes(first).includes(star.lane)
         && (!second || openLanes(second).includes(star.lane));
-      const roomToChase = !first || first[0].z < -18 || chaseLaneOpen;
-      if (roomToChase) steer(state, Math.sign(star.lane - rider.lane));
+      const chaseStep = Math.sign(star.lane - rider.lane);
+      let chaseCrossesBlocked = false;
+      for (let lane = rider.lane + chaseStep; lane !== star.lane; lane += chaseStep) {
+        if (first.some((row) => row.kind !== KIND_BEAM && row.lane === lane)) {
+          chaseCrossesBlocked = true;
+        }
+      }
+      const roomToChase = !first || first[0].z < -state.speed * 1.15
+        || (chaseLaneOpen && !chaseCrossesBlocked);
+      if (roomToChase) steer(state, chaseStep);
     }
     if (!first) return;
 
@@ -113,6 +141,28 @@ export function createAutopilot(doomedAfter = Infinity) {
       const both = targets.filter((lane) => openLanes(second).includes(lane));
       if (both.length > 0) targets = both;
     }
+    // Straddle rescue: the rider's body — not its steering target —
+    // is what a row hits. If the body sits inside a barrier's reach
+    // and the steering already committed cannot carry it out before
+    // the group arrives, jump that barrier instead of trusting the
+    // crossing to finish in time.
+    const arrival = -first[0].z / state.speed;
+    if (arrival < 0.6 && rider.grounded) {
+      for (const row of first) {
+        if (row.kind !== KIND_BARRIER) continue;
+        if (Math.abs(rider.x - LANES[row.lane]) >= 1.45) continue;
+        const dir = Math.sign(LANES[rider.lane] - rider.x);
+        let exitTime = Infinity;
+        if (dir !== 0) {
+          exitTime = ((LANES[row.lane] + dir * 1.45) - rider.x) * dir / LANE_SPEED;
+        }
+        if (exitTime > arrival && row.z > -state.speed * 0.62) {
+          jump(state);
+          return;
+        }
+      }
+    }
+
     if (targets.includes(rider.lane)) return;
     if (targets.length === 0) {
       // No lane out: if it is a barrier, jump it.
@@ -121,7 +171,35 @@ export function createAutopilot(doomedAfter = Infinity) {
       return;
     }
     targets.sort((a, b) => Math.abs(a - rider.lane) - Math.abs(b - rider.lane));
-    steer(state, Math.sign(targets[0] - rider.lane));
+    const target = targets[0];
+    const dir = Math.sign(target - rider.lane);
+    // Crossing discipline: a route that passes through a lane this
+    // group blocks is only started when the rider's body can clear
+    // that lane's reach before the group arrives. Too late, and the
+    // choices are jumping a barrier under the rider or waiting the
+    // group out in a lane it leaves open.
+    const blockedSet = new Set(
+      first.filter((row) => row.kind !== KIND_BEAM).map((row) => row.lane),
+    );
+    let lastBlocked = null;
+    for (let lane = rider.lane + dir; lane !== target; lane += dir) {
+      if (blockedSet.has(lane)) lastBlocked = lane;
+    }
+    if (lastBlocked !== null) {
+      const clearX = LANES[lastBlocked] + dir * 1.55;
+      const timeToClear = Math.abs(clearX - rider.x) / LANE_SPEED;
+      if (arrival < timeToClear + 0.12) {
+        const barrierHere = first.find(
+          (row) => row.kind === KIND_BARRIER && Math.abs(rider.x - LANES[row.lane]) < 1.5,
+        );
+        if (barrierHere && rider.grounded && barrierHere.z > -state.speed * 0.62) {
+          jump(state);
+          return;
+        }
+        if (!blockedSet.has(nearestLane(rider.x))) return;
+      }
+    }
+    steer(state, dir);
   };
 }
 
@@ -148,6 +226,10 @@ export function buildShotWorld(name, seed) {
   if (name === SHOT_OVER) {
     runScene(state, createAutopilot(DOOMED_AFTER_METRES), OVER_LIMIT_SECONDS);
     return { state, screen: 'over' };
+  }
+  if (name === SHOT_RUSH) {
+    runScene(state, createAutopilot(), RUSH_SECONDS);
+    return { state, screen: 'play' };
   }
   runScene(state, createAutopilot(), PLAY_SECONDS);
   return { state, screen: 'play' };
