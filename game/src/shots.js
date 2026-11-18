@@ -41,10 +41,15 @@ function rowGroups(state) {
   return groups;
 }
 
-/** The lanes a group leaves open (a beam leaves every lane open). */
+/** The lanes a group leaves open (a beam leaves every lane open, a
+ * ramp blocks nothing — it is a launch, not a wall — and a drone
+ * blocks the lane its drift has carried it over, read live). */
 function openLanes(group) {
   const blocked = new Set();
-  for (const row of group) if (row.kind !== KIND_BEAM) blocked.add(row.lane);
+  for (const row of group) {
+    if (row.kind === KIND_BEAM || row.kind === 'ramp') continue;
+    blocked.add(row.lane);
+  }
   return [0, 1, 2].filter((lane) => !blocked.has(lane));
 }
 
@@ -109,7 +114,7 @@ export function createAutopilot(doomedAfter = Infinity) {
       const chaseStep = Math.sign(star.lane - rider.lane);
       let chaseCrossesBlocked = false;
       for (let lane = rider.lane + chaseStep; lane !== star.lane; lane += chaseStep) {
-        if (first.some((row) => row.kind !== KIND_BEAM && row.lane === lane)) {
+        if (first.some((row) => row.kind !== KIND_BEAM && row.kind !== 'ramp' && row.lane === lane)) {
           chaseCrossesBlocked = true;
         }
       }
@@ -118,6 +123,14 @@ export function createAutopilot(doomedAfter = Infinity) {
       if (roomToChase) steer(state, chaseStep);
     }
     if (!first) return;
+
+    // Delivery work, when the road allows it: a gate close ahead with
+    // no hazard group about to arrive is worth a lane change — its
+    // target lane pays, every other lane fumbles the parcel.
+    const gate = (state.gates ?? []).find((g) => !g.resolved && g.z < -6 && g.z > -58);
+    if (gate && first[0].z < -state.speed * 0.9 && rider.lane !== gate.targetLane) {
+      steer(state, Math.sign(gate.targetLane - rider.lane));
+    }
 
     const beam = first.find((row) => row.kind === KIND_BEAM);
     if (beam) {
@@ -140,6 +153,13 @@ export function createAutopilot(doomedAfter = Infinity) {
     if (second) {
       const both = targets.filter((lane) => openLanes(second).includes(lane));
       if (both.length > 0) targets = both;
+    }
+    // A close delivery gate rewrites the preference: when its target
+    // lane is one this group leaves open anyway, that lane wins over
+    // the merely-nearest open lane — the bonus is the point of the run.
+    const closeGate = (state.gates ?? []).find((g) => !g.resolved && g.z < -4 && g.z > -34);
+    if (closeGate && targets.includes(closeGate.targetLane)) {
+      targets = [closeGate.targetLane];
     }
     // Straddle rescue: the rider's body — not its steering target —
     // is what a row hits. If the body sits inside a barrier's reach
@@ -179,7 +199,7 @@ export function createAutopilot(doomedAfter = Infinity) {
     // choices are jumping a barrier under the rider or waiting the
     // group out in a lane it leaves open.
     const blockedSet = new Set(
-      first.filter((row) => row.kind !== KIND_BEAM).map((row) => row.lane),
+      first.filter((row) => row.kind !== KIND_BEAM && row.kind !== 'ramp').map((row) => row.lane),
     );
     let lastBlocked = null;
     for (let lane = rider.lane + dir; lane !== target; lane += dir) {
@@ -228,9 +248,45 @@ export function buildShotWorld(name, seed) {
     return { state, screen: 'over' };
   }
   if (name === SHOT_RUSH) {
-    runScene(state, createAutopilot(), RUSH_SECONDS);
+    // Ride until the run reaches the neon night city (the third
+    // district), then stage the boost moment the frame is about: a
+    // pad just collected, burst live, streaks at full stretch.
+    const pilot = createAutopilot();
+    let guard = 0;
+    while ((state.districtIndex !== 2 || state.distance < 960) && guard < 90 / STEP) {
+      pilot(state);
+      stepWorld(state, STEP);
+      guard += 1;
+      if (state.mode !== 'play') break;
+    }
+    // Settle onto the deck before the frame: a rider caught mid-jump
+    // fills the frame's edge and hides the city the shot is about.
+    let settle = 0;
+    while (state.mode === 'play'
+      && (!state.rider.grounded || state.rider.sliding > 0) && settle < 3 / STEP) {
+      pilot(state);
+      stepWorld(state, STEP);
+      settle += 1;
+    }
+    if (state.mode === 'play') {
+      state.boost = state.boostDuration;
+      state.effectiveSpeed = state.speed + 13;
+    }
     return { state, screen: 'play' };
   }
   runScene(state, createAutopilot(), PLAY_SECONDS);
+  // The play frame is the delivery loop in one picture: a gate close
+  // ahead with its target lane under the courier, a star line feeding
+  // into it, and at least one delivery already on the board.
+  if (state.mode === 'play') {
+    if (state.deliveries < 1) state.deliveries = 1;
+    state.gates.length = 0;
+    state.gates.push({ targetLane: state.rider.lane, z: -19, resolved: false });
+    for (let i = 0; i < 4; i += 1) {
+      state.pickups.push({
+        kind: 'star', lane: state.rider.lane, z: -6 - i * 3.1, y: 0.75, taken: false,
+      });
+    }
+  }
   return { state, screen: 'play' };
 }

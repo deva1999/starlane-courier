@@ -5,8 +5,10 @@
 // travelled, which keeps even the decoration reproducible.
 
 import * as THREE from 'three';
-import { COLORS, LANES, SPEED_MAX, SPEED_START } from './config.js';
-import { KIND_BARRIER, KIND_BEAM, KIND_GATE } from './world.js';
+import { BOOST_SECONDS, COLORS, LANES, SPEED_MAX, SPEED_START } from './config.js';
+import { KIND_BARRIER, KIND_BEAM, KIND_GATE, KIND_RAMP } from './world.js';
+import { KIND_DRONE } from './drones.js';
+import { DISTRICTS } from './districts.js';
 import { makeRandom } from './random.js';
 
 const SCENERY_SPAN = 190;
@@ -175,6 +177,102 @@ function makeStar() {
   return star;
 }
 
+/** A delivery gate: posts and a top bar spanning the whole lane, with
+ * a glowing marker panel hanging over the one lane that pays. The
+ * marker is named so the draw can slide it to the gate's target lane. */
+function makeDeliveryGate() {
+  const group = new THREE.Group();
+  const postMaterial = flat(0x2b3444);
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.42, 3.6, 0.42), postMaterial);
+    post.position.set(5.3 * side, 1.8, 0);
+    group.add(post);
+  }
+  const bar = new THREE.Mesh(
+    new THREE.BoxGeometry(11.2, 0.5, 0.5),
+    flat(0xffd43b, { emissive: 0xffd43b, emissiveIntensity: 0.55 }),
+  );
+  bar.position.y = 3.55;
+  group.add(bar);
+  const marker = new THREE.Group();
+  const panel = new THREE.Mesh(
+    new THREE.BoxGeometry(2.7, 1.15, 0.24),
+    flat(0x37e08b, { emissive: 0x37e08b, emissiveIntensity: 0.95 }),
+  );
+  panel.position.y = 2.75;
+  const chevron = new THREE.Mesh(
+    new THREE.ConeGeometry(0.55, 0.9, 4),
+    flat(0x37e08b, { emissive: 0x37e08b, emissiveIntensity: 0.95 }),
+  );
+  chevron.rotation.x = Math.PI;
+  chevron.position.y = 1.85;
+  marker.add(panel, chevron);
+  marker.name = 'marker';
+  group.add(marker);
+  return group;
+}
+
+/** A boost pad: a flat chevron strip flush with the deck. */
+function makeBoostPad() {
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(2.5, 0.07, 3.4),
+    flat(0x22d3ee, { emissive: 0x22d3ee, emissiveIntensity: 0.75 }),
+  );
+  base.position.y = 0.05;
+  group.add(base);
+  for (const i of [-1, 0, 1]) {
+    const chevron = new THREE.Mesh(
+      new THREE.ConeGeometry(0.5, 1.0, 4),
+      flat(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.5 }),
+    );
+    chevron.rotation.x = -Math.PI / 2;
+    chevron.rotation.y = Math.PI / 4;
+    chevron.position.set(0, 0.12, i * 1.05);
+    group.add(chevron);
+  }
+  return group;
+}
+
+/** A ramp: an orange wedge slab the courier rides up and off. */
+function makeRamp() {
+  const group = new THREE.Group();
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.28, 3.6), flat(COLORS.barrier));
+  slab.rotation.x = 0.42;
+  slab.position.y = 0.72;
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(2.44, 0.1, 0.7),
+    flat(COLORS.barrierStripe, { emissive: 0xfff3bf, emissiveIntensity: 0.25 }),
+  );
+  stripe.rotation.x = 0.42;
+  stripe.position.set(0, 1.18, -0.7);
+  const support = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.15, 0.4), flat(0x495057));
+  support.position.set(0, 0.55, 1.35);
+  group.add(slab, stripe, support);
+  return group;
+}
+
+/** A security drone: a dark hover body, one red eye, a rotor ring. */
+function makeDrone() {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 10), flat(0x343a40));
+  body.scale.y = 0.62;
+  const eye = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 10, 8),
+    flat(COLORS.gate, { emissive: COLORS.gate, emissiveIntensity: 1.0 }),
+  );
+  eye.position.set(0, -0.02, 0.5);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.85, 0.07, 8, 22),
+    flat(0x868e96, { emissive: 0xfa5252, emissiveIntensity: 0.25 }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.28;
+  group.add(body, eye, ring);
+  group.position.y = 1.45;
+  return group;
+}
+
 function makeShieldOrb() {
   const group = new THREE.Group();
   const orb = new THREE.Mesh(
@@ -200,7 +298,8 @@ export function createScene(canvas) {
   const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 400);
   camera.position.set(0, CAMERA_Y, CAMERA_Z);
 
-  scene.add(new THREE.HemisphereLight(0xcfefff, 0x3f7a34, 1.05));
+  const hemi = new THREE.HemisphereLight(0xcfefff, 0x3f7a34, 1.05);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1cf, 1.9);
   sun.position.set(7, 14, 5);
   scene.add(sun);
@@ -209,14 +308,15 @@ export function createScene(canvas) {
   scene.add(sunBall);
 
   // The floating road: a long deck, glowing rails, and scrolling dashes.
-  const road = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.5, 320), flat(COLORS.road));
+  // The materials are kept by name because the district palette
+  // recolours them as the run crosses each boundary.
+  const roadMaterial = flat(COLORS.road);
+  const road = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.5, 320), roadMaterial);
   road.position.set(0, -0.26, -140);
   scene.add(road);
+  const railMaterial = flat(COLORS.roadEdge, { emissive: COLORS.roadEdge, emissiveIntensity: 0.5 });
   for (const side of [-1, 1]) {
-    const rail = new THREE.Mesh(
-      new THREE.BoxGeometry(0.28, 0.28, 320),
-      flat(COLORS.roadEdge, { emissive: COLORS.roadEdge, emissiveIntensity: 0.5 }),
-    );
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 320), railMaterial);
     rail.position.set(5.55 * side, 0.12, -140);
     scene.add(rail);
   }
@@ -255,10 +355,13 @@ export function createScene(canvas) {
   // Valley floor far below, and scenery whose place is a function of
   // distance: item i sits at wrap(baseZ - distance), so any frame can be
   // rebuilt exactly from the run's numbers alone.
-  const valley = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), flat(COLORS.grass));
+  const groundMaterial = flat(COLORS.grass);
+  const valley = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMaterial);
   valley.rotation.x = -Math.PI / 2;
   valley.position.set(0, -7, -160);
   scene.add(valley);
+  const sceneryGroup = new THREE.Group();
+  scene.add(sceneryGroup);
   const sceneryRandom = makeRandom(20261);
   const scenery = [];
   for (let i = 0; i < SCENERY_COUNT; i += 1) {
@@ -307,8 +410,64 @@ export function createScene(canvas) {
     item.rotation.y = sceneryRandom() * Math.PI * 2;
     const scale = 0.85 + sceneryRandom() * 0.9;
     item.scale.setScalar(band >= 0.8 ? 1.3 : scale);
-    scene.add(item);
+    sceneryGroup.add(item);
     scenery.push(item);
+  }
+
+  // The coast's own roadside: sandy islets with palms, sitting on the
+  // water the ground plane becomes in that district. They scroll on
+  // the same wrap as the valley scenery and show only at the coast.
+  const coastGroup = new THREE.Group();
+  coastGroup.visible = false;
+  scene.add(coastGroup);
+  const coastItems = [];
+  const coastRandom = makeRandom(77003);
+  for (let i = 0; i < 12; i += 1) {
+    const isle = new THREE.Group();
+    const sand = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.1, 0.7, 9), flat(0xf4d58d));
+    sand.position.y = -0.35;
+    const palm = makeTree(0x2f9e44);
+    palm.rotation.z = (coastRandom() - 0.5) * 0.35;
+    isle.add(sand, palm);
+    const side = coastRandom() < 0.5 ? -1 : 1;
+    isle.position.set(side * (10 + coastRandom() * 14), -6.4, 0);
+    isle.userData = { baseZ: -coastRandom() * SCENERY_SPAN, x: isle.position.x, y: -6.4 };
+    coastGroup.add(isle);
+    coastItems.push(isle);
+  }
+
+  // The night city's roadside: dark towers with lit windows, close to
+  // the lane, scrolling past like streetlights made of buildings.
+  const cityGroup = new THREE.Group();
+  cityGroup.visible = false;
+  scene.add(cityGroup);
+  const cityItems = [];
+  const cityRandom = makeRandom(41502);
+  const towerMaterial = flat(0x232946);
+  const windowMaterials = [
+    flat(0xffd166, { emissive: 0xffd166, emissiveIntensity: 0.9 }),
+    flat(0x22d3ee, { emissive: 0x22d3ee, emissiveIntensity: 0.9 }),
+    flat(0xff8fab, { emissive: 0xff8fab, emissiveIntensity: 0.8 }),
+  ];
+  for (let i = 0; i < 16; i += 1) {
+    const tower = new THREE.Group();
+    const height = 6 + cityRandom() * 13;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, height, 3.4), towerMaterial);
+    body.position.y = height / 2 - 7;
+    tower.add(body);
+    for (let wnd = 0; wnd < 5; wnd += 1) {
+      const strip = new THREE.Mesh(
+        new THREE.BoxGeometry(3.5, 0.32, 3.5),
+        windowMaterials[Math.floor(cityRandom() * windowMaterials.length)],
+      );
+      strip.position.y = -5 + cityRandom() * (height - 3);
+      tower.add(strip);
+    }
+    const side = i % 2 === 0 ? -1 : 1;
+    tower.position.set(side * (9.5 + cityRandom() * 9), 0, 0);
+    tower.userData = { baseZ: -i * (SCENERY_SPAN / 16) - cityRandom() * 6, x: tower.position.x, y: 0 };
+    cityGroup.add(tower);
+    cityItems.push(tower);
   }
 
   const rider = makeRider();
@@ -323,18 +482,26 @@ export function createScene(canvas) {
     [KIND_BARRIER]: [],
     [KIND_GATE]: [],
     [KIND_BEAM]: [],
+    [KIND_RAMP]: [],
+    [KIND_DRONE]: [],
     star: [],
     shield: [],
+    deliveryGate: [],
+    boostPad: [],
   };
   const makers = {
     [KIND_BARRIER]: makeBarrier,
     [KIND_GATE]: makeGate,
     [KIND_BEAM]: makeBeam,
+    [KIND_RAMP]: makeRamp,
+    [KIND_DRONE]: makeDrone,
     star: makeStar,
     shield: makeShieldOrb,
+    deliveryGate: makeDeliveryGate,
+    boostPad: makeBoostPad,
   };
   for (const kind of Object.keys(pools)) {
-    const count = kind === 'star' ? 40 : 14;
+    const count = kind === 'star' ? 40 : kind === 'deliveryGate' ? 3 : kind === 'boostPad' ? 10 : 14;
     for (let i = 0; i < count; i += 1) {
       const mesh = makers[kind]();
       mesh.visible = false;
@@ -362,6 +529,7 @@ export function createScene(canvas) {
   let shake = 0;
   let prevRiderX = 0;
   let elapsed = 0;
+  let lastDistrictIndex = -1;
 
   /** Spray a burst of sparks at a point (pickup, near miss, crash). */
   function burst(x, y, z, count, color) {
@@ -398,15 +566,48 @@ export function createScene(canvas) {
     const flicker = 0.85 + Math.sin(elapsed * 41) * 0.15;
     for (const glow of thrusters) glow.scale.set(1, 1, flicker);
 
-    const used = { [KIND_BARRIER]: 0, [KIND_GATE]: 0, [KIND_BEAM]: 0, star: 0, shield: 0 };
+    const used = {
+      [KIND_BARRIER]: 0, [KIND_GATE]: 0, [KIND_BEAM]: 0, [KIND_RAMP]: 0,
+      [KIND_DRONE]: 0, star: 0, shield: 0, deliveryGate: 0, boostPad: 0,
+    };
     for (const row of state.rows) {
       const pool = pools[row.kind];
+      if (!pool) continue;
       const index = used[row.kind];
       used[row.kind] += 1;
       if (index >= pool.length) continue;
       const mesh = pool[index];
       mesh.visible = true;
-      mesh.position.set(row.kind === KIND_BEAM ? 0 : LANES[row.lane], 0, row.z);
+      if (row.kind === KIND_DRONE) {
+        // The drone hovers and bobs over the x its drift has reached.
+        mesh.position.set(row.droneX, 1.45 + Math.sin(elapsed * 5 + row.z * 0.4) * 0.12, row.z);
+      } else {
+        mesh.position.set(row.kind === KIND_BEAM ? 0 : LANES[row.lane], 0, row.z);
+      }
+    }
+    for (const gate of state.gates ?? []) {
+      if (gate.resolved) continue;
+      const index = used.deliveryGate;
+      used.deliveryGate += 1;
+      if (index >= pools.deliveryGate.length) continue;
+      const mesh = pools.deliveryGate[index];
+      mesh.visible = true;
+      mesh.position.set(0, 0, gate.z);
+      const marker = mesh.getObjectByName('marker');
+      if (marker) {
+        marker.position.x = LANES[gate.targetLane];
+        const pulse = 1 + Math.sin(elapsed * 6) * 0.06;
+        marker.scale.setScalar(pulse);
+      }
+    }
+    for (const pad of state.pads ?? []) {
+      if (pad.taken) continue;
+      const index = used.boostPad;
+      used.boostPad += 1;
+      if (index >= pools.boostPad.length) continue;
+      const mesh = pools.boostPad[index];
+      mesh.visible = true;
+      mesh.position.set(LANES[pad.lane], 0, pad.z);
     }
     for (const item of state.pickups) {
       // Past the rider's plane a pickup is already missed; drawing it
@@ -442,6 +643,35 @@ export function createScene(canvas) {
       item.rotation.y += item.userData.spin * dt;
     }
 
+    // District dress: when the run crosses a boundary, the whole
+    // stage changes at once — sky, fog, light, road, ground and which
+    // roadside world is standing beside the lane.
+    const districtIndex = state.districtIndex ?? 0;
+    if (districtIndex !== lastDistrictIndex) {
+      lastDistrictIndex = districtIndex;
+      const palette = DISTRICTS[districtIndex];
+      scene.background.setHex(palette.sky);
+      scene.fog.color.setHex(palette.fog);
+      sun.color.setHex(palette.sunColor);
+      sun.intensity = palette.sunIntensity;
+      sunBall.position.set(...palette.sunPosition);
+      sunBall.material.color.setHex(districtIndex === 2 ? 0xdbeafe : 0xffe28a);
+      hemi.groundColor.setHex(palette.hemiGround);
+      roadMaterial.color.setHex(palette.road);
+      railMaterial.color.setHex(palette.roadEdge);
+      railMaterial.emissive.setHex(palette.roadEdge);
+      groundMaterial.color.setHex(palette.ground);
+      coastGroup.visible = districtIndex === 1;
+      cityGroup.visible = districtIndex === 2;
+      sceneryGroup.visible = districtIndex !== 2;
+    }
+    for (const isle of coastItems) {
+      isle.position.z = wrapZ(isle.userData.baseZ - state.distance) + 12;
+    }
+    for (const tower of cityItems) {
+      tower.position.z = wrapZ(tower.userData.baseZ - state.distance) + 12;
+    }
+
     // Particles fall and fade.
     for (let i = 0; i < PARTICLES; i += 1) {
       const data = particleData[i];
@@ -459,8 +689,12 @@ export function createScene(canvas) {
     // changes; speed widens the view a touch, and impacts shake what
     // is left. The low anchor keeps the horizon in the top sliver of
     // the frame and the rider big in the lower middle.
-    const speedShare = (state.speed - SPEED_START) / (SPEED_MAX - SPEED_START);
-    camera.fov = CAMERA_FOV + THREE.MathUtils.clamp(speedShare, 0, 1) * 10;
+    const pace = state.effectiveSpeed ?? state.speed;
+    const speedShare = (pace - SPEED_START) / (SPEED_MAX - SPEED_START);
+    // A boost burst kicks the view wider on top of the pace widening:
+    // the world visibly stretches as the pad's burst takes hold.
+    const boostKick = state.boost > 0 ? 9 * Math.min(1, state.boost / BOOST_SECONDS + 0.25) : 0;
+    camera.fov = CAMERA_FOV + THREE.MathUtils.clamp(speedShare, 0, 1) * 10 + boostKick;
     camera.updateProjectionMatrix();
     shake = Math.max(0, shake - dt * 2.2);
     const jolt = shake * shake;

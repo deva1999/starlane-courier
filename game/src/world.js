@@ -5,16 +5,25 @@
 // what makes the screenshot scenes and the playtest log reproducible.
 
 import {
-  COMBO_MAX, DESPAWN_BEHIND, GRAVITY, JUMP_VELOCITY, LANES, LANE_SPEED,
-  OPENING_SAFE_REACH, RIDER_DUCKED, RIDER_HALF, RIDER_HEIGHT, ROW_GAP_MIN,
-  ROW_GAP_START, SHIELD_GRACE, SLIDE_SECONDS, SPAWN_AHEAD, SPEED_MAX,
-  SPEED_RAMP, SPEED_START, STAR_POINTS,
+  BOOST_BONUS_SPEED, BOOST_SECONDS, COMBO_MAX, DESPAWN_BEHIND, GRAVITY,
+  JUMP_VELOCITY, LANES, LANE_SPEED, OPENING_SAFE_REACH, RIDER_DUCKED,
+  RIDER_HALF, RIDER_HEIGHT, ROW_GAP_MIN, ROW_GAP_START, SHIELD_GRACE,
+  SLIDE_SECONDS, SPAWN_AHEAD, SPEED_MAX, SPEED_RAMP, SPEED_START, STAR_POINTS,
 } from './config.js';
 import { makeRandom, pick, randomInt } from './random.js';
+import { districtAtDistance } from './districts.js';
+import { resolveGates, scheduleGates } from './deliveries.js';
+import { launchFromRamp, placeBoostPad, placeRamp, resolveBoostPads } from './roadFeatures.js';
+import { KIND_DRONE, driftDrone, makeDrone } from './drones.js';
+
+export { EVENT_DELIVERY, EVENT_DELIVERY_MISS } from './deliveries.js';
+export { EVENT_BOOST, EVENT_RAMP } from './roadFeatures.js';
+export { KIND_DRONE };
 
 export const KIND_BARRIER = 'barrier';
 export const KIND_BEAM = 'beam';
 export const KIND_GATE = 'gate';
+export const KIND_RAMP = 'ramp';
 
 export const EVENT_STAR = 'star';
 export const EVENT_SHIELD = 'shield';
@@ -46,6 +55,15 @@ export function createWorld(seed) {
     comboTimer: 0,
     shield: false,
     grace: 0,
+    districtIndex: 0,
+    districtLap: 0,
+    deliveries: 0,
+    gates: [],
+    gatesScheduled: 0,
+    pads: [],
+    boost: 0,
+    boostDuration: BOOST_SECONDS,
+    effectiveSpeed: SPEED_START,
     rider: { lane: 1, x: LANES[1], y: 0, vy: 0, grounded: true, sliding: 0 },
     rows: [],
     pickups: [],
@@ -94,6 +112,9 @@ function spawnRow(state) {
   const beam = starLine + 0.08;
   const gate = beam + 0.18 + 0.04 * pressure;
   const doubleBarrier = gate + 0.20 + 0.03 * pressure;
+  const drone = doubleBarrier + 0.07;
+  const ramp = drone + 0.06;
+  const boostPad = ramp + 0.05;
 
   if (roll < starLine) {
     // A line of stars down one lane: the calm between hazards.
@@ -119,6 +140,21 @@ function spawnRow(state) {
     for (let l = 0; l < 3; l += 1) {
       if (l !== open) state.rows.push({ kind: KIND_BARRIER, lane: l, z, cleared: false });
     }
+    return;
+  }
+  if (roll < drone) {
+    // A drone: it will not stay in the lane it spawns in.
+    state.rows.push(makeDrone(state, z));
+    return;
+  }
+  if (roll < ramp) {
+    // A ramp, with its star arc strung along the jump it throws.
+    placeRamp(state, lane, z);
+    return;
+  }
+  if (roll < boostPad) {
+    // A boost pad flush with the deck, and a calm moment around it.
+    placeBoostPad(state, lane, z);
     return;
   }
   // A single barrier, with a star arc over it paying anyone who jumps.
@@ -168,6 +204,11 @@ function rowHits(state, row, riderX, riderY) {
   if (row.kind === KIND_BEAM) {
     return riderY + riderHeight(state) > BEAM_BOTTOM;
   }
+  if (row.kind === KIND_DRONE) {
+    // The drone hovers at courier height and threatens the x it is
+    // over right now; only a genuinely high flight clears it.
+    return Math.abs(riderX - row.droneX) < RIDER_HALF + 0.8 && riderY < 1.9;
+  }
   const laneX = LANES[row.lane];
   const reach = row.kind === KIND_GATE ? RIDER_HALF + 0.8 : RIDER_HALF + 0.9;
   if (Math.abs(riderX - laneX) >= reach) return false;
@@ -184,8 +225,15 @@ export function stepWorld(state, dt) {
   // top speed arrives in well under half the old time.
   const rampBoost = 1 + Math.min(1.8, state.time / 34);
   state.speed = Math.min(SPEED_MAX, state.speed + SPEED_RAMP * rampBoost * dt);
-  state.distance += state.speed * dt;
-  state.score += state.speed * dt;
+  if (state.boost > 0) state.boost = Math.max(0, state.boost - dt);
+  // The boost burst is extra pace on top of the run's own speed: it
+  // moves the world, the score and the district clock alike.
+  state.effectiveSpeed = state.speed + (state.boost > 0 ? BOOST_BONUS_SPEED : 0);
+  state.distance += state.effectiveSpeed * dt;
+  state.score += state.effectiveSpeed * dt;
+  const here = districtAtDistance(state.distance);
+  state.districtIndex = here.index;
+  state.districtLap = here.lap;
   if (state.grace > 0) state.grace -= dt;
   if (state.comboTimer > 0) {
     state.comboTimer -= dt;
@@ -213,17 +261,27 @@ export function stepWorld(state, dt) {
 
   // The world rolls toward the rider; the spawn frontier rolls with it,
   // and new rows keep the road full out to the horizon.
-  const dz = state.speed * dt;
-  for (const row of state.rows) row.z += dz;
+  const dz = state.effectiveSpeed * dt;
+  for (const row of state.rows) {
+    row.z += dz;
+    driftDrone(row, dt);
+  }
   for (const item of state.pickups) item.z += dz;
+  for (const gate of state.gates) gate.z += dz;
+  for (const pad of state.pads) pad.z += dz;
   state.nextRowZ += dz;
   while (state.nextRowZ > -SPAWN_AHEAD) spawnRow(state);
+  scheduleGates(state, SPAWN_AHEAD);
 
   collectPickups(state);
+  resolveBoostPads(state, state.events, state.fx);
   resolveRows(state);
+  resolveGates(state, state.events, state.fx);
 
   state.rows = state.rows.filter((row) => row.z < DESPAWN_BEHIND);
   state.pickups = state.pickups.filter((item) => !item.taken && item.z < DESPAWN_BEHIND);
+  state.gates = state.gates.filter((gate) => !gate.resolved && gate.z < DESPAWN_BEHIND);
+  state.pads = state.pads.filter((pad) => !pad.taken && pad.z < DESPAWN_BEHIND);
 }
 
 /** Stars and shields are gathered by riding through them. */
@@ -259,9 +317,20 @@ function resolveRows(state) {
   const rider = state.rider;
   for (const row of state.rows) {
     if (row.cleared || row.z < 0) continue;
+    if (row.kind === KIND_RAMP) {
+      // A ramp is not a hazard: reaching it grounded in its lane is a
+      // launch, and passing it any other way is just passing it.
+      if (row.z < 0.9) {
+        if (launchFromRamp(state, row, state.events)) row.cleared = true;
+      } else {
+        row.cleared = true;
+      }
+      continue;
+    }
     if (row.z < 0.9 && rowHits(state, row, rider.x, rider.y)) {
       row.cleared = true;
       if (state.grace > 0) continue;
+      if (state.boost > 0) continue; // the burst ploughs straight through
       if (state.shield) {
         state.shield = false;
         state.grace = SHIELD_GRACE;

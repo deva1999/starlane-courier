@@ -57,6 +57,29 @@ export const SPAWN_AHEAD = 150;
 /** How far behind the rider the world may be forgotten. */
 export const DESPAWN_BEHIND = 24;
 
+/** Districts: each leg of the run covers this many metres, then the
+ * world changes dress — valley, coast, night city, and around again. */
+export const DISTRICT_LENGTH = 450;
+
+/** Delivery gates: the first stands this far into a run, later gates
+ * follow at this spacing; a clean delivery pays this bonus, scaled a
+ * little by the combo held as the gate is crossed. */
+export const DELIVERY_FIRST_AT = 210;
+export const DELIVERY_EVERY = 340;
+export const DELIVERY_BONUS = 300;
+
+/** Boost pads: seconds of burst, extra units per second during it, and
+ * the burst also shields the rider from every hazard it ploughs past. */
+export const BOOST_SECONDS = 1.6;
+export const BOOST_BONUS_SPEED = 13;
+
+/** Ramps launch harder than a jump: take-off velocity for a ramp. */
+export const RAMP_VELOCITY = 17;
+
+/** Drones drift sideways across the lanes at this many units/second,
+ * reversing at the outer lane centres, so their lane is read late. */
+export const DRONE_DRIFT_SPEED = 1.5;
+
 /** Fixed simulation step: the game never integrates a bigger slice. */
 export const STEP = 1 / 120;
 

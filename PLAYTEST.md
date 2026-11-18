@@ -5,7 +5,7 @@ driving the same screens and keys a player uses, plus staged duels on
 the live world for the events a free run cannot be trusted to produce
 on cue (a near miss, a shield break). The machine-readable record of
 the final run is `playtest-log.json` beside this file:
-**29 of 29 checks passed, zero page errors.**
+**36 of 36 checks passed, zero page errors.**
 
 ## How it was played
 
@@ -26,8 +26,18 @@ the final run is `playtest-log.json` beside this file:
    jumped for a near miss; a shield flag set and a real hazard steered
    into for a shield break — each must fire its edge flash through the
    real rules. Pause must silence the whole feedback layer.
-6. A deliberate crash in real time, the game-over screen, Enter to
-   restart, P to pause and resume.
+6. Staged checks for the new systems, each driven through the real
+   rules on the live world: the run must cross into the second
+   district (Sunset Coast) with its banner shown; a delivery gate
+   crossed in its marked lane must complete and pay, and crossed in
+   the wrong lane must fumble the parcel and drop the combo; a boost
+   pad must burst the speed and carry the rider unharmed through a
+   pylon; a ramp must launch the rider into its arc and collect the
+   stars strung along it; a drone must drift sideways across the
+   lanes as it approaches.
+7. A deliberate crash in real time, the game-over screen (which must
+   show the score and the deliveries count), Enter to restart, P to
+   pause and resume.
 
 ## Final run, the numbers
 
@@ -35,15 +45,20 @@ the final run is `playtest-log.json` beside this file:
 | --- | --- |
 | Title screen over a live attract world | pass |
 | Start, slide, lane changes, jump (peak height 2.15) | pass |
-| Safe opening | hands-off world still alive at 80 m; it died at 5.3 s, once real hazards arrived |
-| Difficulty ramp (seed 9, raw module) | speed 22.7 → 37.1 units/s between 5 s and 25 s; rows spawned per 5 s window 3 early vs 13 late |
-| Driven run | survived, **+864 m**, **13 stars**, score 2,115, best combo ×8 |
-| Star feedback | 13 floaters spawned; payout text `+175` caught in the DOM in its spawn slice |
-| Speed streaks | peak level 0.63 at 41.2 units/s |
+| Safe opening | hands-off world still alive at 80 m (t = 5.3 s) |
+| Difficulty ramp (seed 9, raw module) | speed 22.7 → 37.1 units/s between 5 s and 25 s; distinct rows spawned 7 in the 2–7 s window vs 13 in the 24–29 s window |
+| Driven run | survived, **+872 m**, **15 stars**, score 2,703, best combo ×8 |
+| Star feedback | 17 floaters spawned; payout text `+25` caught in the DOM in its spawn slice |
+| Speed streaks | peak level 0.64 at 41.3 units/s |
 | Distance markers | pills shown up to **750 m** |
 | Near miss / shield break | each fired exactly one edge flash of its kind (`near`, `shieldbreak`); the shield run continued under grace |
+| District transition | district 0 → 1 (coast), banner `SUNSET COAST` shown |
+| Delivery gates | marked-lane crossing completed and paid (+314 score, deliveries 1); wrong-lane crossing fumbled (deliveries still 1, combo dropped to 1) |
+| Boost pad | burst of 1.59 s, speed 20.4 → 33.4 units/s, pylon survived under boost protection |
+| Ramp | launch to peak height 4.74, 5 arc stars collected, ramp event fired |
+| Drone | drifted x 0 → 1.50 across the lanes over 1 s |
 | Pause / game over | feedback layer fully silent on both (streak opacity 0, no floaters, no marker) |
-| Forced crash → results screen (score 128 on the short staged run) → Enter restart | pass |
+| Forced crash → results screen (score 44, deliveries 0, distance 44 m on the short staged run) → Enter restart | pass |
 | Console and page errors | none |
 
 ## Findings, in the order a player would meet them
@@ -81,7 +96,7 @@ the final run is `playtest-log.json` beside this file:
   exact slice it spawns instead of counting DOM residents.
 - **Performance note, honestly scoped.** In this test environment
   (headless Chromium with SwiftShader software rendering on a shared
-  1.5-CPU VM) the game renders at 6.3 FPS at 1280×800; the scene is
+  1.5-CPU VM) the game renders at 6.0 FPS at 1280×800; the scene is
   now ~380 low-poly meshes with Lambert materials, which a desktop
   GPU renders trivially. The frame-rate figure is recorded in the log
   as an observation of the test rig, not as a property of the game.

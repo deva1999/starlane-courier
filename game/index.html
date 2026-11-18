@@ -74,6 +74,18 @@
     letter-spacing: .08em; opacity: 0; transition: opacity .3s ease-out;
   }
   #distance-marker.show { opacity: 1; }
+  #hud-deliveries-line { font-size: 17px; font-weight: 800; margin-top: 3px; text-shadow: 0 2px 0 rgba(16,42,74,.45); }
+  #hud-gate { font-size: 14px; font-weight: 700; margin-top: 3px; opacity: .9; text-shadow: 0 2px 0 rgba(16,42,74,.45); }
+  /* The district banner: a pill at the top centre naming the world the
+     run has just entered, gone again in a couple of seconds. */
+  #district-banner {
+    position: absolute; top: 118px; left: 50%; transform: translateX(-50%);
+    border-radius: 999px; padding: 7px 22px; font-size: 19px; font-weight: 900;
+    letter-spacing: .14em; color: #fff; background: rgba(13, 34, 64, .72);
+    border: 2px solid rgba(255,255,255,.4); opacity: 0; transition: opacity .35s ease-out;
+    white-space: nowrap;
+  }
+  #district-banner.show { opacity: 1; }
 
   /* Screen panels sit low and small so the game itself stays the picture. */
   .screen {
@@ -116,6 +128,7 @@
   <div id="edge-flash"></div>
   <div id="fx-floaters"></div>
   <div id="distance-marker">250 m</div>
+  <div id="district-banner">GREEN VALLEY</div>
 </div>
 
 <div id="hud" class="hidden">
@@ -123,10 +136,12 @@
     <div class="label">SCORE</div>
     <div id="hud-score">0</div>
     <div id="hud-stars-line">⭐ <span id="hud-stars">0</span></div>
+    <div id="hud-deliveries-line">📦 <span id="hud-deliveries">0</span> delivered</div>
   </div>
   <div class="right">
     <div id="hud-speed">0 km/h</div>
     <div id="hud-distance">0 m</div>
+    <div id="hud-gate">gate in <span id="hud-gate-distance">–</span> m</div>
     <div id="hud-shield" class="hidden">🛡️ SHIELD</div>
   </div>
   <div id="hud-combo" class="hidden">COMBO ×2</div>
@@ -135,8 +150,11 @@
 <div id="title-screen" class="screen">
   <div class="panel">
     <h1>STARLANE<br><span class="accent">COURIER</span></h1>
-    <p>Rush the sky-lane, dodge the barriers, slide the beams and grab every
-       star parcel. One crash ends the run — a shield saves you once.</p>
+    <p>Rush the sky-lane through the valley, the sunset coast and the neon
+       night city. Dodge the barriers, slide the beams, grab every star
+       parcel, hit the boost pads, launch off the ramps, watch the drones —
+       and cross every delivery gate in its marked lane. One crash ends
+       the run — a shield saves you once.</p>
     <p class="controls">← → switch lane &nbsp;·&nbsp; ↑ / SPACE jump &nbsp;·&nbsp; ↓ slide &nbsp;·&nbsp; P pause &nbsp;·&nbsp; swipe on touch</p>
     <button id="start-button" class="cta">▶ START DELIVERY</button>
     <p class="controls">Best score: <span id="title-best">0</span></p>
@@ -147,7 +165,7 @@
   <div class="panel">
     <h2>DELIVERY OVER!</h2>
     <div class="big-score" id="final-score">0</div>
-    <p class="stats">⭐ <span id="final-stars">0</span> parcels &nbsp;·&nbsp; 🏁 <span id="final-distance">0 m</span> &nbsp;·&nbsp; best combo <span id="final-combo">×1</span></p>
+    <p class="stats">⭐ <span id="final-stars">0</span> parcels &nbsp;·&nbsp; 📦 <span id="final-deliveries">0</span> deliveries &nbsp;·&nbsp; 🏁 <span id="final-distance">0 m</span> &nbsp;·&nbsp; best combo <span id="final-combo">×1</span></p>
     <p class="controls">Best score: <span id="final-best">0</span></p>
     <button id="restart-button" class="cta">↻ RIDE AGAIN</button>
   </div>

@@ -10,10 +10,12 @@ import { createInput } from './input.js';
 import { createScene } from './render.js';
 import { buildShotWorld, createAutopilot } from './shots.js';
 import {
-  EVENT_CRASH, EVENT_JUMP, EVENT_LAND, EVENT_NEAR, EVENT_SHIELD,
-  EVENT_SHIELD_BREAK, EVENT_SLIDE, EVENT_STAR, createWorld, jump, slide,
-  steer, stepWorld,
+  EVENT_BOOST, EVENT_CRASH, EVENT_DELIVERY, EVENT_DELIVERY_MISS, EVENT_JUMP,
+  EVENT_LAND, EVENT_NEAR, EVENT_RAMP, EVENT_SHIELD, EVENT_SHIELD_BREAK,
+  EVENT_SLIDE, EVENT_STAR, createWorld, jump, slide, steer, stepWorld,
 } from './world.js';
+import { DISTRICTS } from './districts.js';
+import { metresToNextGate } from './deliveries.js';
 
 const params = new URLSearchParams(window.location.search);
 const shotName = params.get('shot');
@@ -31,6 +33,9 @@ const hud = {
   combo: document.getElementById('hud-combo'),
   speed: document.getElementById('hud-speed'),
   shield: document.getElementById('hud-shield'),
+  deliveries: document.getElementById('hud-deliveries'),
+  gateDistance: document.getElementById('hud-gate-distance'),
+  banner: document.getElementById('district-banner'),
 };
 const screens = {
   title: document.getElementById('title-screen'),
@@ -58,10 +63,29 @@ const fxState = {
   markerCount: 0,
   lastMarker: 0,
   streakLevel: 0,
+  districtChanges: 0,
+  lastDistrictName: '',
+  bannerCount: 0,
 };
 let flashTimer = null;
 let markerTimer = null;
+let bannerTimer = null;
 let markerShownFor = 0;
+let lastDistrictShown = -1;
+
+/** Name the district the run has just entered, briefly, at the top. */
+function showDistrictBanner(index) {
+  const district = DISTRICTS[index];
+  if (!district) return;
+  fxState.districtChanges += 1;
+  fxState.bannerCount += 1;
+  fxState.lastDistrictName = district.name;
+  hud.banner.textContent = district.name;
+  hud.banner.style.borderColor = district.banner;
+  hud.banner.classList.add('show');
+  if (bannerTimer) clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => hud.banner.classList.remove('show'), 2100);
+}
 
 /** Flash the frame's edge once: colour and strength depend on the event. */
 function fireFlash(kind, rgb, strength) {
@@ -100,6 +124,9 @@ function presentFx() {
     if (screen !== 'play') continue;
     if (entry.kind === 'star') spawnFloater(`+${entry.points}`, LANES[entry.lane]);
     else if (entry.kind === 'shield') spawnFloater('SHIELD UP', LANES[entry.lane], true);
+    else if (entry.kind === 'delivery') spawnFloater(`DELIVERED +${entry.points}`, LANES[entry.lane], true);
+    else if (entry.kind === 'deliverymiss') spawnFloater('MISSED GATE', LANES[entry.lane]);
+    else if (entry.kind === 'boost') spawnFloater('BOOST!', LANES[entry.lane], true);
   }
   world.fx.length = 0;
 }
@@ -110,6 +137,8 @@ function clearFx(keepFlash = false) {
   fxEls.streaks.style.opacity = '0';
   fxState.streakLevel = 0;
   fxEls.marker.classList.remove('show');
+  hud.banner.classList.remove('show');
+  if (bannerTimer) clearTimeout(bannerTimer);
   if (!keepFlash) {
     if (flashTimer) clearTimeout(flashTimer);
     fxEls.flash.style.opacity = '0';
@@ -150,6 +179,7 @@ function beginRun() {
   pilot = createAutopilot();
   lastComboShown = 1;
   markerShownFor = 0;
+  lastDistrictShown = 0;
   clearFx();
   audio.startMusic();
   showScreen('play');
@@ -167,6 +197,7 @@ function finishRun() {
   document.getElementById('final-stars').textContent = String(world.stars);
   document.getElementById('final-distance').textContent = `${Math.floor(world.distance)} m`;
   document.getElementById('final-combo').textContent = `×${world.bestCombo}`;
+  document.getElementById('final-deliveries').textContent = String(world.deliveries);
   document.getElementById('final-best').textContent = String(best);
   showScreen('over');
 }
@@ -185,8 +216,23 @@ function presentEvents() {
       view.burst(r.x, r.y + 1, -0.5, 14, 0x3bc9db);
     } else if (event === EVENT_NEAR) {
       audio.near();
+      view.addShake(0.32);
       view.burst(r.x + (r.x < 0 ? 1.4 : -1.4), 0.8, -0.5, 5, 0xf1f3f5);
       if (screen === 'play') fireFlash('near', '255, 255, 255', 0.5);
+    } else if (event === EVENT_DELIVERY) {
+      audio.delivery();
+      view.burst(r.x, r.y + 1.4, -0.5, 26, 0x37e08b);
+      if (screen === 'play') fireFlash('delivery', '55, 224, 139', 0.7);
+    } else if (event === EVENT_DELIVERY_MISS) {
+      audio.deliveryMiss();
+      view.addShake(0.25);
+      if (screen === 'play') fireFlash('deliverymiss', '255, 146, 43', 0.6);
+    } else if (event === EVENT_BOOST) {
+      audio.boost();
+      view.burst(r.x, r.y + 0.6, 0.4, 18, 0x22d3ee);
+    } else if (event === EVENT_RAMP) {
+      audio.ramp();
+      view.burst(r.x, r.y + 0.4, -0.5, 10, 0xff922b);
     } else if (event === EVENT_JUMP) audio.jump();
     else if (event === EVENT_SLIDE) audio.slide();
     else if (event === EVENT_SHIELD_BREAK) {
@@ -209,8 +255,17 @@ function presentEvents() {
 function presentHud() {
   hud.score.textContent = String(Math.floor(world.score));
   hud.stars.textContent = String(world.stars);
-  hud.speed.textContent = `${Math.round(world.speed * 3.6)} km/h`;
+  hud.deliveries.textContent = String(world.deliveries);
+  hud.gateDistance.textContent = String(metresToNextGate(world));
+  const pace = world.effectiveSpeed ?? world.speed;
+  hud.speed.textContent = `${Math.round(pace * 3.6)} km/h`;
   fxEls.distance.textContent = `${Math.floor(world.distance)} m`;
+  // A district boundary crossed in live play gets its banner; the
+  // title screen's attract world crosses them silently.
+  if (screen === 'play' && world.districtIndex !== lastDistrictShown) {
+    lastDistrictShown = world.districtIndex;
+    showDistrictBanner(world.districtIndex);
+  }
   hud.shield.classList.toggle('hidden', !world.shield);
   if (world.combo !== lastComboShown) {
     lastComboShown = world.combo;
@@ -221,9 +276,13 @@ function presentHud() {
   }
   hud.combo.classList.toggle('hidden', world.combo <= 1);
 
-  // Speed streaks fade in with pace and exist only in live play.
+  // Speed streaks fade in with pace and exist only in live play; a
+  // boost burst forces them to full stretch for its duration.
   const level = screen === 'play'
-    ? Math.min(1, Math.max(0, (world.speed - STREAK_SPEED) / (SPEED_MAX - STREAK_SPEED)))
+    ? Math.max(
+      Math.min(1, Math.max(0, (pace - STREAK_SPEED) / (SPEED_MAX - STREAK_SPEED))),
+      world.boost > 0 ? 1 : 0,
+    )
     : 0;
   fxState.streakLevel = level;
   fxEls.streaks.style.opacity = String(Math.round(level * 0.9 * 100) / 100);
@@ -329,8 +388,10 @@ if (shotName) {
     document.getElementById('final-stars').textContent = String(world.stars);
     document.getElementById('final-distance').textContent = `${Math.floor(world.distance)} m`;
     document.getElementById('final-combo').textContent = `×${world.bestCombo}`;
+    document.getElementById('final-deliveries').textContent = String(world.deliveries);
     document.getElementById('final-best').textContent = String(Math.max(best, score));
   }
+  lastDistrictShown = world.districtIndex;
   showScreen(shot.screen);
   // A screenshot is a settled frame, not a moment in a run: distance
   // already covered must not pop a marker pill into the picture.
@@ -361,7 +422,18 @@ window.render_game_to_text = () => JSON.stringify({
   bestCombo: world.bestCombo,
   shield: world.shield,
   speed: Math.round(world.speed * 10) / 10,
+  effectiveSpeed: Math.round((world.effectiveSpeed ?? world.speed) * 10) / 10,
   distance: Math.floor(world.distance),
+  district: DISTRICTS[world.districtIndex]?.id ?? 'valley',
+  districtIndex: world.districtIndex,
+  districtLap: world.districtLap,
+  deliveries: world.deliveries,
+  gateIn: metresToNextGate(world),
+  gates: (world.gates ?? []).map((gate) => ({
+    targetLane: gate.targetLane, z: Math.round(gate.z * 10) / 10, resolved: gate.resolved,
+  })),
+  pads: (world.pads ?? []).filter((pad) => !pad.taken).length,
+  boost: Math.round(world.boost * 100) / 100,
   fx: {
     flashCount: fxState.flashCount,
     flashByKind: fxState.flashByKind,
@@ -375,6 +447,10 @@ window.render_game_to_text = () => JSON.stringify({
     floaterDom: fxEls.floaters.childElementCount,
     markerShown: fxEls.marker.classList.contains('show'),
     markerText: fxEls.marker.textContent,
+    districtChanges: fxState.districtChanges,
+    lastDistrictName: fxState.lastDistrictName,
+    bannerShown: hud.banner.classList.contains('show'),
+    bannerText: hud.banner.textContent,
   },
   rider: {
     lane: world.rider.lane,
@@ -386,7 +462,10 @@ window.render_game_to_text = () => JSON.stringify({
   lanes: LANES,
   rows: world.rows
     .filter((row) => row.z > -45 && row.z < 6)
-    .map((row) => ({ kind: row.kind, lane: row.lane, z: Math.round(row.z * 10) / 10 })),
+    .map((row) => ({
+      kind: row.kind, lane: row.lane, z: Math.round(row.z * 10) / 10,
+      ...(row.droneX !== undefined ? { droneX: Math.round(row.droneX * 100) / 100 } : {}),
+    })),
   pickups: world.pickups.filter((item) => !item.taken && item.z > -45 && item.z < 6).length,
 });
 window.advanceTime = (ms) => {

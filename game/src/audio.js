@@ -96,6 +96,29 @@ export function createAudio() {
       if (!context) return;
       noise(now(), 0.22, 0.1, 1600, 300);
     },
+    /** A delivery lands: a bright two-note confirmation, parcel gone. */
+    delivery() {
+      if (!context) return;
+      tone(783.99, now(), 0.16, 'triangle', 0.32);
+      tone(1174.66, now() + 0.09, 0.26, 'triangle', 0.3);
+      tone(1567.98, now() + 0.18, 0.3, 'sine', 0.16);
+    },
+    /** A fumbled delivery: one flat descending note, no celebration. */
+    deliveryMiss() {
+      if (!context) return;
+      tone(329.63, now(), 0.28, 'triangle', 0.22, 196.0);
+    },
+    /** The boost burst: a rising rush of filtered air. */
+    boost() {
+      if (!context) return;
+      noise(now(), 0.5, 0.22, 300, 3200);
+      tone(220, now(), 0.42, 'sawtooth', 0.1, 660);
+    },
+    /** The ramp launch: a quick upward spring. */
+    ramp() {
+      if (!context) return;
+      tone(392, now(), 0.3, 'square', 0.12, 1174.66);
+    },
     shieldBreak() {
       if (!context) return;
       tone(392, now(), 0.3, 'sawtooth', 0.2, 98);

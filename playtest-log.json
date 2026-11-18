@@ -14,7 +14,7 @@
     {
       "name": "fps_observed_software_renderer",
       "ok": true,
-      "detail": "fps=6.3 at 1280x800 in headless Chromium (SwiftShader software rendering, shared 1.5-CPU VM; recorded as an observation, not a gate — the scene is low-poly meshes with Lambert materials, trivial for a desktop GPU)"
+      "detail": "fps=6.0 at 1280x800 in headless Chromium (SwiftShader software rendering, shared 1.5-CPU VM; recorded as an observation, not a gate — the scene is low-poly meshes with Lambert materials, trivial for a desktop GPU)"
     },
     {
       "name": "start_run",
@@ -54,7 +54,7 @@
     {
       "name": "difficulty_density_rises",
       "ok": true,
-      "detail": "distinct rows spawned: 3 in 2-7s window vs 13 in 24-29s window"
+      "detail": "distinct rows spawned: 7 in 2-7s window vs 13 in 24-29s window"
     },
     {
       "name": "long_run_survives",
@@ -64,22 +64,22 @@
     {
       "name": "long_run_distance",
       "ok": true,
-      "detail": "+864 m"
+      "detail": "+872 m"
     },
     {
       "name": "long_run_stars",
       "ok": true,
-      "detail": "stars=13"
+      "detail": "stars=15"
     },
     {
       "name": "feedback_star_floater",
       "ok": true,
-      "detail": "floaters spawned=13, star payout text seen in DOM=\"+175\""
+      "detail": "floaters spawned=17, star payout text seen in DOM=\"+25\""
     },
     {
       "name": "feedback_speed_streaks",
       "ok": true,
-      "detail": "peak streak level=0.63 at speed=41.2"
+      "detail": "peak streak level=0.64 at speed=41.3"
     },
     {
       "name": "feedback_distance_marker",
@@ -107,6 +107,36 @@
       "detail": "break flashes=1, edge-flash kind=\"shieldbreak\", run continues mode=play"
     },
     {
+      "name": "district_transition_to_coast",
+      "ok": true,
+      "detail": "district 0 -> 1 (coast), banner=\"SUNSET COAST\" shown=true"
+    },
+    {
+      "name": "delivery_gate_completes_and_pays",
+      "ok": true,
+      "detail": "deliveries=1, score gained=314, event=true"
+    },
+    {
+      "name": "delivery_gate_wrong_lane_fumbles",
+      "ok": true,
+      "detail": "deliveries still=1, combo after miss=1, event=true"
+    },
+    {
+      "name": "boost_pad_bursts_and_protects",
+      "ok": true,
+      "detail": "boost=1.59s, speed 20.4 -> 33.4, pylon survived=true"
+    },
+    {
+      "name": "ramp_launches_and_arc_stars_collect",
+      "ok": true,
+      "detail": "peak y=4.74, arc stars collected=5, ramp event=true"
+    },
+    {
+      "name": "drone_drifts_across_lanes",
+      "ok": true,
+      "detail": "drone x 0 -> 1.50 over 1s (drift=1.50), z now=-13.5"
+    },
+    {
       "name": "crash_ends_run",
       "ok": true,
       "detail": "screen=over mode=over"
@@ -119,7 +149,12 @@
     {
       "name": "over_screen_shows_score",
       "ok": true,
-      "detail": "final=128"
+      "detail": "final=44"
+    },
+    {
+      "name": "over_screen_shows_deliveries",
+      "ok": true,
+      "detail": "deliveries shown=0, distance shown=44 m"
     },
     {
       "name": "feedback_cleared_on_game_over",
@@ -148,14 +183,14 @@
     }
   ],
   "errors": [],
-  "fps": 6.3,
+  "fps": 6,
   "fpsEnvironment": "headless Chromium SwiftShader on a shared 1.5-CPU VM",
   "run": {
-    "distance": 870,
-    "score": 2115,
-    "stars": 13,
+    "distance": 878,
+    "score": 2703,
+    "stars": 15,
     "bestCombo": 8
   },
-  "passed": 29,
-  "total": 29
+  "passed": 36,
+  "total": 36
 }
